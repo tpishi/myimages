@@ -1,13 +1,14 @@
 'use strict';
 
-const fs = require('fs');
-const crypto = require('crypto');
+import fs = require('fs');
+import crypto = require('crypto');
+import http = require('http');
 
 function dir(path) {
   const paths = [];
   const files = fs.readdirSync(path);
   files.forEach((name) => {
-    const fullPath = path + '/' + name;
+    const fullPath:string = path + '/' + name;
     const stats = fs.statSync(fullPath);
     if (stats.isDirectory()) {
       Array.prototype.push.apply(paths, dir(fullPath));
@@ -41,6 +42,13 @@ function createHashTable(files) {
   return table;
 }
 
+http.createServer((request, response) => {
+  console.log('request');
+  response.write('hello');
+  response.end();
+}).listen(8080);
+
+// TODO: 非同期化
 const files = dir(process.argv[2]);
 console.log('files:' + files.length);
 const table = createHashTable(files);
@@ -54,3 +62,4 @@ for (hash in table) {
     console.log(message);
   }
 }
+
