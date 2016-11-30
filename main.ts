@@ -3,63 +3,107 @@
 import fs = require('fs');
 import crypto = require('crypto');
 import http = require('http');
+import Rx = require('rxjs/Rx');
 
-function dir(path) {
-  const paths = [];
-  const files = fs.readdirSync(path);
-  files.forEach((name) => {
-    const fullPath:string = path + '/' + name;
-    const stats = fs.statSync(fullPath);
-    if (stats.isDirectory()) {
-      Array.prototype.push.apply(paths, dir(fullPath));
-    } else if (fullPath.endsWith('.JPG') ||
-               fullPath.endsWith('.jpg') ||
-               fullPath.endsWith('.JPEG') ||
-               fullPath.endsWith('.jpeg')) {
-      paths.push(fullPath);
-    }
+function dir(path:string):Promise<Array<string>> {
+  return new Promise((resolve, reject) => {
+    fs.readdir(path, async (err, files) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const promises = [];
+      files.forEach((file) => {
+        promises.push(stat(path + '/' + file));
+      });
+      const paths:Array<string[]> = await Promise.all(promises);
+      const all = [];
+      paths.forEach((result) => {
+        Array.prototype.push.apply(all, result);
+      });
+      resolve(all);
+    });
   });
-  return paths;
 }
 
-function calcHash(path) {
-  const hash = crypto.createHash('sha1');
-  const buffer = fs.readFileSync(path);
-  hash.update(buffer);
-  return hash.digest().toString('hex');
-}
-
-function createHashTable(files) {
-  const table = {};
-  files.forEach((path, index) => {
-    console.log('creating hash:' + index + '/' + files.length);
-    const hash = calcHash(path);
-    if (!(hash in table)) {
-      table[hash] = [];
-    }
-    table[hash].push(path);
+function stat(path:string):Promise<Array<string>> {
+  return new Promise((resolve, reject) => {
+    fs.stat(path, async (err, stats) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      if (stats.isDirectory()) {
+        const paths = await dir(path);
+        resolve(paths);
+      } else if (path.endsWith('.jpg') ||
+                 path.endsWith('.JPG') ||
+                 path.endsWith('.jpeg') ||
+                 path.endsWith('.JPEG')) {
+        resolve([path]);
+      } else {
+        resolve([]);
+      }
+    });
   });
-  return table;
 }
+
+async function calcHash(path) {
+  return new Promise((resolve, reject) => {
+    console.log('path:' + path);
+    const hash = crypto.createHash('sha1');
+    const data = fs.readFileSync(path);
+    hash.update(data);
+    const result = hash.digest().toString('hex');
+    console.log('result:' + result);
+    resolve(result);
+  });
+}
+
+function wait(idle) {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      resolve();
+    }, idle);
+  });
+}
+
+let processing:number = 0;
+let total:number = 0;
+stat(process.argv[2]).then((files) => {
+  total = files.length;
+  const observer = Rx.Observable.create(async (obs) => {
+    // TODO: まだここがダメ。
+    let index = 0;
+    for (index = 0; index < total; index++) {
+      let hash = await calcHash(files[index]);
+      console.log('hash:' + hash);
+      await wait(100);
+      console.log('wait finish');
+      obs.next({
+        path: files[index],
+        hash: hash
+      });
+      if (index === total - 1) {
+        obs.complete();
+      }
+    }
+    return () => {
+      console.log('disposed');
+    };
+  });
+  observer.subscribe((x) => {
+    processing++;
+    console.log('x:' + x + ':' + processing);
+  }, (err) => {
+    console.log('error');
+  }, () => {
+    console.log('complete');
+  });
+});
 
 http.createServer((request, response) => {
   console.log('request');
-  response.write('hello');
+  response.write('hello:' + processing + '/' + total);
   response.end();
 }).listen(8080);
-
-// TODO: 非同期化
-const files = dir(process.argv[2]);
-console.log('files:' + files.length);
-const table = createHashTable(files);
-let hash;
-for (hash in table) {
-  if (table[hash].length >= 2) {
-    let message = 'hash:' + hash;
-    table[hash].forEach((path) => {
-      message = message + ':' + path;
-    });
-    console.log(message);
-  }
-}
-
