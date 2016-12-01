@@ -18,6 +18,7 @@
   "homepage": "https://github.com/tpishi/myimages#readme",
   "dependencies": {
     "@types/node": "0.0.1",
-    "rxjs": "^5.0.0-rc.4"
+    "rxjs": "^5.0.0-rc.4",
+    "typescript": "^2.0.10"
   }
 }
