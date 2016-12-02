@@ -10,7 +10,7 @@ function getSummary() {
         if (json.totalImages === 0) {
           setTimeout(getSummary, 1000);
         } else if (json.preparedImages < json.totalImages) {
-          const valuer = Math.floor(json.preparedImages*100/json.totalImages);
+          const valuer = Math.floor(((json.preparedImages*100)/json.totalImages) + 0.5);
           $('.progress-bar').css('width', valuer+'%').attr('aria-valuenow', valuer);
           elem.innerText = json.preparedImages + '/' + json.totalImages;
           setTimeout(getSummary, 1000);
