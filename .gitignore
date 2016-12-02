@@ -32,6 +32,7 @@ jspm_packages
 
 # Typescript outDir
 lib
+websrc/lib
 
 # Optional npm cache directory
 .npm
