@@ -66,8 +66,8 @@ class ImageScanner {
   duplicated:string[];
   constructor(name:string) {
     this.name = name;
-    if (this.name.endsWith(path.sep)) {
-      this.name.slice(0, -1);
+    if (name.endsWith(path.sep)) {
+      this.name = name.slice(0, -1);
     }
     this.prepared = 0;
     this.total = 0;
@@ -95,23 +95,38 @@ class ImageScanner {
   }
 }
 
-function main(name:string) {
+function main(webroot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(name);
   scanner.scan();
   http.createServer((request, response) => {
-    response.write('hello:' + scanner.prepared + '/' + scanner.total + '\n');
-    if (scanner.duplicated.length > 0) {
-      for (let hash of scanner.duplicated) {
-        const names:string[] = scanner.images[hash];
-        response.write('found duplicated:');
-        for (let name of names) {
-          response.write('image:' + name + '\n');
-        }
-        response.write('done\n');
-      }
+    if (request.url === '/') {
+      request.url = '/index.html';
     }
-    response.end();
+    if (request.url.startsWith('/cache/')) {
+      const json:any = {};
+      if (request.url === '/cache/summary') {
+        json.preparedImages = scanner.prepared;
+        json.totalImages =  scanner.total;
+      }
+      response.write(JSON.stringify(json));
+      response.end();
+      return;
+    }
+    const file = webroot + request.url;
+    fs.stat(file, (err, stats) => {
+      if (err) {
+        console.log(`${file} not found`);
+        response.statusCode = 404;
+        response.end();
+        return;
+      }
+      console.log(`${file} found`);
+      response.write(fs.readFileSync(file));
+      response.end();
+    });
   }).listen(8080);
 }
 
-main(process.argv[2]);
+const webroot:string = process.argv[1].replace('lib/main.js', '') + 'websrc';
+let imageroot:string = process.argv[2];
+main(webroot, process.argv[2]);
