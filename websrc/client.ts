@@ -15,8 +15,8 @@ function getSummary() {
           elem.innerText = json.preparedImages + '/' + json.totalImages;
           setTimeout(getSummary, 1000);
         } else if (json.preparedImages === json.totalImages) {
-          elem['aria-valuenow'] = '"' + json.preparedImages + '"';
-          elem['aria-valuemax'] = '"' + json.totalImages + '"';
+          const valuer = 100;
+          $('.progress-bar').css('width', valuer+'%').attr('aria-valuenow', valuer);
           elem.innerText = json.preparedImages + '/' + json.totalImages;
         }
       } else {
