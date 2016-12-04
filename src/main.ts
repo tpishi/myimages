@@ -142,7 +142,7 @@ class ImageScanner {
       const image = this.myImagesRoot + '.images/' + key;
       fs.stat(image, (err, stats) => {
         if (!err) {
-          console.log('image:found:' + image);
+          //console.log('image:found:' + image);
           resolve(fs.readFileSync(image));
           return;
         }
@@ -158,8 +158,8 @@ class ImageScanner {
             .resize(640)
             .toBuffer()
             .then((data) => {
-              console.log('data.length:' + data.length);
-              console.log('image:' + image + ':saved');
+              //console.log('data.length:' + data.length);
+              //console.log('image:' + image + ':saved');
               fs.writeFileSync(image, data);
               resolve(data);
             })
