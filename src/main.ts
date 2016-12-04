@@ -5,6 +5,7 @@ import fsp = require('./fsp');
 import crypto = require('crypto');
 import http = require('http');
 import path = require('path');
+import url = require('url');
 import sharp = require('sharp');
 
 function listImageFiles(name:string):Promise<Array<string>> {
@@ -111,7 +112,7 @@ class ImageScanner {
       imagesByName: [...this.imagesByName],
     };
     fs.writeFileSync(`${this.myImagesRoot}.images/database.json`, JSON.stringify(obj));
-    console.log(`saved:dirMap:${obj.dirMap.length}:+imagesByName:${obj.imagesByName.length}`);
+    //console.log(`saved:dirMap:${obj.dirMap.length}:+imagesByName:${obj.imagesByName.length}`);
   }
   scan() {
     listImageFiles(this.name).then(async (files) => {
@@ -175,24 +176,26 @@ function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
   scanner.scan();
   http.createServer((request, response) => {
-    if (request.url === '/') {
-      request.url = '/index.html';
+    const parsedUrl = url.parse(request.url); 
+    if (parsedUrl.pathname === '/') {
+      parsedUrl.pathname = '/index.html';
     }
-    if (request.url.startsWith('/cache/')) {
+    if (parsedUrl.pathname.startsWith('/cache/')) {
       const json:any = {};
-      if (request.url === '/cache/summary') {
+      if (parsedUrl.pathname === '/cache/summary') {
         json.preparedImages = scanner.prepared;
         json.totalImages =  scanner.total;
         response.write(JSON.stringify(json));
         response.end();
         return;
       }
-      if (request.url === '/cache/images') {
+      if (parsedUrl.pathname === '/cache/images') {
         response.write(JSON.stringify([...scanner.imagesByName]));
         response.end();
         return;
       }
-      const key = decodeURIComponent(request.url.slice('/cache/'.length));
+      const key = decodeURIComponent(parsedUrl.pathname.slice('/cache/'.length));
+      console.log(`getThumbnail:${key}`);
       scanner.getThumbnail(key)
              .then((data) => {
                response.write(data);
@@ -205,7 +208,7 @@ function main(myImagesRoot:string, name:string) {
              });
       return;
     }
-    const file = myImagesRoot + 'websrc' + request.url;
+    const file = myImagesRoot + 'websrc' + parsedUrl.pathname;
     fs.stat(file, (err, stats) => {
       if (err) {
         console.log(`${file} not found`);
