@@ -155,7 +155,7 @@ class ImageScanner {
           }
           const fullPath = this.imagesByName.get(key).fullPath;
           sharp(fullPath)
-            .resize(320)
+            .resize(640)
             .toBuffer()
             .then((data) => {
               console.log('data.length:' + data.length);

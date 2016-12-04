@@ -34,7 +34,7 @@
       const to = from + NUMBER_OF_IMAGES_PER_PAGE;
       for (let i = from; i < to; i++) {
         //console.log('<div class="center-block"><img src="/cache/' + data[i][0] + '"></img></div>')
-        $('#images').append('<div class="center-block"><img src="/cache/' + data[i][0] + '"></img></div>');
+        $('#images').append('<div class="row"><img class="img-responsive center-block" src="/cache/' + data[i][0] + '"></img></div>');
       }
     });
   }
