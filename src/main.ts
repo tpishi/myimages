@@ -1,41 +1,34 @@
 'use strict';
 
 import fs = require('fs');
+import fsp = require('./fsp');
 import crypto = require('crypto');
 import http = require('http');
 import path = require('path');
 import sharp = require('sharp');
 
-function readdir(dir:string):Promise<Array<string>> {
+function listImageFiles(name:string):Promise<Array<string>> {
   return new Promise((resolve, reject) => {
-    fs.readdir(dir, async (err, files) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      const promises = [];
-      files.forEach((file) => {
-        promises.push(stat(dir + path.sep + file));
-      });
-      const paths:Array<string[]> = await Promise.all(promises);
-      const all = [];
-      paths.forEach((result) => {
-        Array.prototype.push.apply(all, result);
-      });
-      resolve(all);
-    });
-  });
-}
-
-function stat(name:string):Promise<Array<string>> {
-  return new Promise((resolve, reject) => {
-    fs.stat(name, async (err, stats) => {
-      if (err) {
-        reject(err);
-        return;
-      }
+    fsp.stat(name).then(async (stats) => {
       if (stats.isDirectory()) {
-        resolve(await readdir(name));
+        // if directory
+        const dir = name;
+        fsp.readdir(dir).then(async (files) => {
+          // get all files
+          const promises = [];
+          files.forEach((file) => {
+            // list it again
+            promises.push(listImageFiles(dir + path.sep + file));
+          });
+          const paths:Array<string[]> = await Promise.all(promises);
+          const all = [];
+          paths.forEach((result) => {
+            Array.prototype.push.apply(all, result);
+          });
+          resolve(all);
+        }).catch((err) => {
+          reject(err);
+        });
       } else if (name.endsWith('.jpg') ||
                  name.endsWith('.JPG') ||
                  name.endsWith('.jpeg') ||
@@ -44,6 +37,8 @@ function stat(name:string):Promise<Array<string>> {
       } else {
         resolve([]);
       }
+    }).catch((err) => {
+      reject(err);
     });
   });
 }
@@ -75,9 +70,7 @@ class ImageScanner {
     }
     this.prepared = 0;
     this.total = 0;
-    this.dirMap = new Map();
-    this.reverseDirMap = new Map();
-    this.imagesByName = new Map();
+    this.load();
   }
   getShrinkDir(dir:string):string {
     if (!this.dirMap.has(dir)) {
@@ -96,8 +89,32 @@ class ImageScanner {
     }
     return this.dirMap.get(dir);
   }
+  load() {
+    try {
+      const buffer = fs.readFileSync(`${this.myImagesRoot}.images/database.json`);
+      const obj = JSON.parse(buffer.toString('utf-8'));
+      this.dirMap = new Map<string, string>(obj.dirMap);
+      this.reverseDirMap = new Map<string, string>();
+      for (let key of this.dirMap.keys()) {
+        this.reverseDirMap.set(this.dirMap.get(key), key);
+      }
+      this.imagesByName = new Map<string, any>(obj.imagesByName);
+    } catch (err) {
+      this.dirMap = new Map();
+      this.reverseDirMap = new Map();
+      this.imagesByName = new Map();
+    }
+  }
+  save() {
+    const obj = {
+      dirMap: [...this.dirMap],
+      imagesByName: [...this.imagesByName],
+    };
+    fs.writeFileSync(`${this.myImagesRoot}.images/database.json`, JSON.stringify(obj));
+    console.log(`saved:dirMap:${obj.dirMap.length}:+imagesByName:${obj.imagesByName.length}`);
+  }
   scan() {
-    stat(this.name).then(async (files) => {
+    listImageFiles(this.name).then(async (files) => {
       this.total = files.length;
       this.prepared = 0;
       // Here, forEach cannot be used.
@@ -105,16 +122,18 @@ class ImageScanner {
         const obj = path.parse(file);
         const shrinkDir = this.getShrinkDir(obj.dir);
         const key = shrinkDir + path.sep + obj.name + '.webp';
-        if (this.imagesByName.has(key)) {
-          console.log(`warning: ${key} has duplicated??`);
-        }
         const imageData:any = {};
         imageData.fullPath = file;
         imageData.hash = await calcHash(file);
-        //console.log(`set:${key}:imageData:${JSON.stringify(imageData)}`);
         this.imagesByName.set(key, imageData);
         this.prepared++;
+        if ((this.prepared % 10) === 0) {
+          this.save();
+        }
       }
+      this.save();
+    }).catch((err) => {
+      console.log(err);
     });
   }
   getThumbnail(key:string):Promise<Buffer> {
@@ -122,6 +141,7 @@ class ImageScanner {
       const image = this.myImagesRoot + '.images/' + key;
       fs.stat(image, (err, stats) => {
         if (!err) {
+          console.log('image:found:' + image);
           resolve(fs.readFileSync(image));
           return;
         }
@@ -138,6 +158,8 @@ class ImageScanner {
             .toBuffer()
             .then((data) => {
               console.log('data.length:' + data.length);
+              console.log('image:' + image + ':saved');
+              fs.writeFileSync(image, data);
               resolve(data);
             })
             .catch((err) => {
