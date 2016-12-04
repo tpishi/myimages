@@ -33,6 +33,7 @@ jspm_packages
 # Typescript outDir
 lib
 websrc/lib
+.images
 
 # Optional npm cache directory
 .npm
