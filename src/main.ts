@@ -8,6 +8,8 @@ import path = require('path');
 import url = require('url');
 import sharp = require('sharp');
 
+import * as express from 'express';
+
 function listImageFiles(name:string):Promise<Array<string>> {
   return new Promise((resolve, reject) => {
     fsp.stat(name).then(async (stats) => {
@@ -174,52 +176,36 @@ class ImageScanner {
 
 function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
-  scanner.scan();
-  http.createServer((request, response) => {
-    const parsedUrl = url.parse(request.url); 
-    if (parsedUrl.pathname === '/') {
-      parsedUrl.pathname = '/index.html';
-    }
-    if (parsedUrl.pathname.startsWith('/cache/')) {
-      const json:any = {};
-      if (parsedUrl.pathname === '/cache/summary') {
-        json.preparedImages = scanner.prepared;
-        json.totalImages =  scanner.total;
-        response.write(JSON.stringify(json));
-        response.end();
-        return;
-      }
-      if (parsedUrl.pathname === '/cache/images') {
-        response.write(JSON.stringify([...scanner.imagesByName]));
-        response.end();
-        return;
-      }
-      const key = decodeURIComponent(parsedUrl.pathname.slice('/cache/'.length));
-      console.log(`getThumbnail:${key}`);
-      scanner.getThumbnail(key)
-             .then((data) => {
-               response.write(data);
-               response.end();
-             })
-             .catch((err) => {
-               console.log(`getThumbnail:${err}`);
-               response.statusCode = 404;
-               response.end();
-             });
-      return;
-    }
-    const file = myImagesRoot + 'websrc' + parsedUrl.pathname;
-    fs.stat(file, (err, stats) => {
-      if (err) {
-        console.log(`${file} not found`);
-        response.statusCode = 404;
-        response.end();
-        return;
-      }
-      response.write(fs.readFileSync(file));
-      response.end();
+  const app = express();
+  app.listen(8080);
+  app.use('/cache/summary', (request, response) => {
+    response.json({
+      preparedImages: scanner.prepared,
+      totalImages: scanner.total,
     });
-  }).listen(8080);
+    response.end();
+  });
+  app.use('/cache/images', (request, response) => {
+    response.json([...scanner.imagesByName]);
+    response.end();
+  });
+  app.use('/cache', (request, response) => {
+    const parsedUrl = url.parse(request.url);
+    const key = decodeURIComponent(parsedUrl.pathname.substr(1));
+    console.log(`getThumbnail:${key}`);
+    scanner.getThumbnail(key)
+           .then((data) => {
+             response.write(data);
+             response.end();
+           })
+           .catch((err) => {
+             console.log(`getThumbnail:${err}`);
+             response.statusCode = 404;
+             response.end();
+           });
+  });
+  app.use('/static', express.static('websrc'));
+  scanner.scan();
 }
 
 const myImagesRoot:string = process.argv[1].replace('lib/main.js', '');
