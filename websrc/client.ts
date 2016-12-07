@@ -9,14 +9,14 @@
   });
   $('#previous').on('click', () => {
     if (param.currentPage !== 0) {
-      window.location.href = '/static/index.html?page=' + (param.currentPage - 1);
+      window.location.href = '/index.html?page=' + (param.currentPage - 1);
     }
   });
   $('#next').on('click', () => {
     const from = param.currentPage*NUMBER_OF_IMAGES_PER_PAGE;
     const to = from + NUMBER_OF_IMAGES_PER_PAGE;
     if (to < totalImages) {
-      window.location.href = '/static/index.html?page=' + (param.currentPage + 1);
+      window.location.href = '/index.html?page=' + (param.currentPage + 1);
     }
   });
   function parseParams() {

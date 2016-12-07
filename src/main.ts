@@ -178,16 +178,14 @@ function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
   const app = express();
   app.listen(8080);
-  app.use('/cache/summary', (request, response) => {
+  app.get('/cache/summary', (request, response) => {
     response.json({
       preparedImages: scanner.prepared,
       totalImages: scanner.total,
     });
-    response.end();
   });
-  app.use('/cache/images', (request, response) => {
+  app.get('/cache/images', (request, response) => {
     response.json([...scanner.imagesByName]);
-    response.end();
   });
   app.use('/cache', (request, response) => {
     const parsedUrl = url.parse(request.url);
@@ -195,16 +193,13 @@ function main(myImagesRoot:string, name:string) {
     console.log(`getThumbnail:${key}`);
     scanner.getThumbnail(key)
            .then((data) => {
-             response.write(data);
-             response.end();
+             response.send(data);
            })
            .catch((err) => {
-             console.log(`getThumbnail:${err}`);
-             response.statusCode = 404;
-             response.end();
+             response.status(404).send(`${err}`);
            });
   });
-  app.use('/static', express.static('websrc'));
+  app.use(express.static('websrc'));
   scanner.scan();
 }
 
