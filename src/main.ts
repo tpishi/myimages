@@ -7,6 +7,7 @@ import http = require('http');
 import path = require('path');
 import url = require('url');
 import sharp = require('sharp');
+import exif = require('fast-exif');
 
 import * as express from 'express';
 
@@ -54,6 +55,51 @@ function calcHash(file:string):Promise<string> {
       hash.update(data);
       resolve(hash.digest().toString('hex'));
     }, 0);
+  });
+}
+
+function getPhotoDateFromExif(file:string, exifData:any) {
+  if ('exif' in exifData) {
+    if ('DateTimeDigitized' in exifData.exif) {
+      return exifData.exif.DateTimeDigitized;
+    } else if ('DateTimeOriginal' in exifData.exif) {
+      return exifData.exif.DateTimeOriginal;
+    } else {
+      console.log(`${file}:no photo date`);
+      return null;
+    }
+  } else {
+    console.log(`${file}:no exif`);
+    return null;
+  }
+}
+
+function getPhotoDate(file:string):Promise<string> {
+  return new Promise((resolve, reject) => {
+    exif.read(file)
+        .then((exifData) => {
+          if (exifData === null) {
+            exif.read(file, true)
+                .then((exifData) => {
+                  if (exifData === null) {
+                    console.log(`${file}:exifData === null`);
+                    resolve(null);
+                    return;
+                  }
+                  resolve(getPhotoDateFromExif(file, exifData));
+                })
+                .catch((err) => {
+                  console.log(`${file}:${err}`);
+                  resolve(null);
+                })
+            return;
+          }
+          resolve(getPhotoDateFromExif(file, exifData));
+        })
+        .catch((err) => {
+          console.log(`${file}:${err}`);
+          resolve(null);
+        });
   });
 }
 
@@ -128,6 +174,7 @@ class ImageScanner {
         const imageData:any = {};
         imageData.fullPath = file;
         imageData.hash = await calcHash(file);
+        imageData.date = await getPhotoDate(file);
         this.imagesByName.set(key, imageData);
         this.prepared++;
         if ((this.prepared % 10) === 0) {
@@ -161,7 +208,7 @@ class ImageScanner {
             .toBuffer()
             .then((data) => {
               //console.log('data.length:' + data.length);
-              //console.log('image:' + image + ':saved');
+              console.log('image:' + image + ':saved');
               fs.writeFileSync(image, data);
               resolve(data);
             })
@@ -205,4 +252,5 @@ function main(myImagesRoot:string, name:string) {
 
 const myImagesRoot:string = process.argv[1].replace('lib/main.js', '');
 const imageroot:string = path.resolve(process.argv[2]);
+
 main(myImagesRoot, imageroot);
