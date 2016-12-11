@@ -28,13 +28,23 @@
       param.currentPage = 0;
     }
   }
+  function createTag(src, info) {
+    const imagetag = `<img class="img-responsive center-block" src="/cache/${src}"></img>`;
+    if (info.localTime) {
+      const d = new Date();
+      d.setTime(info.localTime);
+      return `<div class="row">${imagetag}<p class="text-center">${d}</p></div>`;
+    } else {
+      return `<div class="row">${imagetag}</div>`;
+    }
+  }
   function getImage() {
     $.getJSON('/cache/images', (data) => {
       const from = param.currentPage*NUMBER_OF_IMAGES_PER_PAGE;
       const to = from + NUMBER_OF_IMAGES_PER_PAGE;
       for (let i = from; i < to; i++) {
         //console.log('<div class="center-block"><img src="/cache/' + data[i][0] + '"></img></div>')
-        $('#images').append('<div class="row"><img class="img-responsive center-block" src="/cache/' + data[i][0] + '"></img></div>');
+        $('#images').append(createTag(data[i][0], data[i][1]));
       }
     });
   }

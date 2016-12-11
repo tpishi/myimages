@@ -11,7 +11,7 @@ import exif = require('fast-exif');
 
 import * as express from 'express';
 
-function listImageFiles(name:string):Promise<Array<string>> {
+function listImageFiles(name:string):Promise<Array<any>> {
   return new Promise((resolve, reject) => {
     fsp.stat(name).then(async (stats) => {
       if (stats.isDirectory()) {
@@ -37,7 +37,10 @@ function listImageFiles(name:string):Promise<Array<string>> {
                  name.endsWith('.JPG') ||
                  name.endsWith('.jpeg') ||
                  name.endsWith('.JPEG')) {
-        resolve([name]);
+        resolve([{
+          name: name,
+          mtime: stats.mtime,
+        }]);
       } else {
         resolve([]);
       }
@@ -58,47 +61,79 @@ function calcHash(file:string):Promise<string> {
   });
 }
 
-function getPhotoDateFromExif(file:string, exifData:any) {
+function getPhotoTimeFromExif(file:string, exifData:any):any {
+  const ret:any = {};
   if ('exif' in exifData) {
-    if ('DateTimeDigitized' in exifData.exif) {
-      return exifData.exif.DateTimeDigitized;
-    } else if ('DateTimeOriginal' in exifData.exif) {
-      return exifData.exif.DateTimeOriginal;
-    } else {
-      console.log(`${file}:no photo date`);
-      return null;
+    if ('TimeZoneOffset' in exifData.exif) {
+      console.log(`TimeZoneOffset:${exifData.exif.TimeZoneOffset}`);
+      ret.TimeZoneOffst = exifData.exif.TimeZoneOffset;
     }
-  } else {
-    console.log(`${file}:no exif`);
-    return null;
+    //console.log('' + JSON.stringify(exifData));
+    if ('DateTimeDigitized' in exifData.exif) {
+      ret.DateTimeDigitized = exifData.exif.DateTimeDigitized;
+    }
+    if ('DateTimeOriginal' in exifData.exif) {
+      ret.DateTimeOriginal = exifData.exif.DateTimeOriginal;
+    }
+    if ('DateTime' in exifData.exif) {
+      ret.DateTime = exifData.exif.DateTime;
+    }
   }
+  if ('gps' in exifData) {
+    //console.log('gps:' + JSON.stringify(exifData.gps));
+    const d = new Date();
+    if ('GPSDateStamp' in exifData.gps) {
+      ret.GPSDateStamp = exifData.gps.GPSDateStamp;
+      const ymd = ret.GPSDateStamp.split(':');
+      const yy = parseInt(ymd[0]);
+      const mm = parseInt(ymd[1]);
+      const dd = parseInt(ymd[2]);
+      d.setUTCFullYear(yy);
+      d.setUTCMonth(mm);
+      d.setUTCDate(dd);
+    }
+    if ('GPSTimeStamp' in exifData.gps) {
+      ret.GPSTimeStamp = exifData.gps.GPSTimeStamp;
+      const hms = ret.GPSTimeStamp;
+      const hh = hms[0];
+      const mm = hms[1];
+      const ss = hms[2];
+      d.setUTCHours(hh);
+      d.setUTCMinutes(mm);
+      d.setUTCSeconds(ss);
+      d.setUTCMilliseconds(0);
+    }
+    ret.calcDateTime = d;
+  }
+  return ret;
 }
 
-function getPhotoDate(file:string):Promise<string> {
+function getPhotoTime(file:string):Promise<any> {
   return new Promise((resolve, reject) => {
+    const empty:any = {};
     exif.read(file)
         .then((exifData) => {
           if (exifData === null) {
             exif.read(file, true)
                 .then((exifData) => {
                   if (exifData === null) {
-                    console.log(`${file}:exifData === null`);
-                    resolve(null);
+                    //console.log(`${file}:exifData === null`);
+                    resolve(empty);
                     return;
                   }
-                  resolve(getPhotoDateFromExif(file, exifData));
+                  resolve(getPhotoTimeFromExif(file, exifData));
                 })
                 .catch((err) => {
                   console.log(`${file}:${err}`);
-                  resolve(null);
+                  resolve(empty);
                 })
             return;
           }
-          resolve(getPhotoDateFromExif(file, exifData));
+          resolve(getPhotoTimeFromExif(file, exifData));
         })
         .catch((err) => {
           console.log(`${file}:${err}`);
-          resolve(null);
+          resolve(empty);
         });
   });
 }
@@ -167,20 +202,35 @@ class ImageScanner {
       this.total = files.length;
       this.prepared = 0;
       // Here, forEach cannot be used.
-      for (let file of files) {
-        const obj = path.parse(file);
+      for (let fileObj of files) {
+        const obj = path.parse(fileObj.name);
         const shrinkDir = this.getShrinkDir(obj.dir);
         const key = shrinkDir + path.sep + obj.name + '.webp';
         const imageData:any = {};
-        imageData.fullPath = file;
-        imageData.hash = await calcHash(file);
-        imageData.date = await getPhotoDate(file);
+        imageData.fullPath = fileObj.name;
+        imageData.mtime = fileObj.mtime.getTime();
+        imageData.hash = await calcHash(fileObj.name);
+        const exifTime = await getPhotoTime(fileObj.name);
+        if ('DateTimeOriginal' in exifTime) {
+          const src = exifTime.DateTimeOriginal;
+          const dd = new Date();
+          dd.setFullYear(src.getUTCFullYear());
+          dd.setMonth(src.getUTCMonth());
+          dd.setDate(src.getUTCDate());
+          dd.setHours(src.getUTCHours());
+          dd.setMinutes(src.getUTCMinutes());
+          dd.setSeconds(src.getUTCSeconds());
+          dd.setMilliseconds(src.getUTCMilliseconds());
+          imageData.localTime = dd.getTime();
+        }
         this.imagesByName.set(key, imageData);
         this.prepared++;
         if ((this.prepared % 10) === 0) {
+          console.log(`${this.prepared}/${this.total}`);
           this.save();
         }
       }
+      console.log(`${this.prepared}/${this.total}`);
       this.save();
     }).catch((err) => {
       console.log(err);
