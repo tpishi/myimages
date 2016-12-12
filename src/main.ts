@@ -284,6 +284,18 @@ function main(myImagesRoot:string, name:string) {
   app.get('/cache/images', (request, response) => {
     response.json([...scanner.imagesByName]);
   });
+  app.use('/cache/check', (request, response) => {
+    const parsedUrl = url.parse(request.url);
+    const key = decodeURIComponent(parsedUrl.pathname.substr(1));
+    console.log(`getThumbnail:${key}`);
+    scanner.getThumbnail(key)
+           .then((data) => {
+             response.send('');
+           })
+           .catch((err) => {
+             response.status(404).send(`${err}`);
+           });
+  });
   app.use('/cache', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));

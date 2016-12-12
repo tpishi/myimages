@@ -43,8 +43,12 @@
       const from = param.currentPage*NUMBER_OF_IMAGES_PER_PAGE;
       const to = from + NUMBER_OF_IMAGES_PER_PAGE;
       for (let i = from; i < to; i++) {
+        $.get(`/cache/check/${data[i][0]}`, () => {
+          $('#images').append(createTag(data[i][0], data[i][1]));
+        }).fail(() => {
+          $('#images').append(`<div>cannot get ${data[i][1].fullPath}</div>`)
+        });
         //console.log('<div class="center-block"><img src="/cache/' + data[i][0] + '"></img></div>')
-        $('#images').append(createTag(data[i][0], data[i][1]));
       }
     });
   }
