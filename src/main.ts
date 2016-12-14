@@ -13,6 +13,12 @@ import * as express from 'express';
 
 function listImageFiles(name:string):Promise<Array<any>> {
   return new Promise((resolve, reject) => {
+    const parsed = path.parse(name);
+    if (parsed.base.startsWith('.')) {
+      console.log('ignored name:' + name);
+      resolve([]);
+      return;
+    }
     fsp.stat(name).then(async (stats) => {
       if (stats.isDirectory()) {
         // if directory
