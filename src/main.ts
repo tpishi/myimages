@@ -288,7 +288,13 @@ function main(myImagesRoot:string, name:string) {
     });
   });
   app.get('/cache/images', (request, response) => {
-    response.json([...scanner.imagesByName]);
+    const array = [...scanner.imagesByName];
+    array.sort((a, b) => {
+      const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
+      const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
+      return bTime - aTime;
+    });
+    response.json(array);
   });
   app.use('/cache/check', (request, response) => {
     const parsedUrl = url.parse(request.url);

@@ -35,7 +35,9 @@
       d.setTime(info.localTime);
       return `<div class="row">${imagetag}<p class="text-center">${d}</p></div>`;
     } else {
-      return `<div class="row">${imagetag}</div>`;
+      const d = new Date();
+      d.setTime(info.mtime);
+      return `<div class="row">${imagetag}<p class="text-center">${d}?</p></div>`;
     }
   }
   function getImage() {
