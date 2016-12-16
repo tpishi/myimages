@@ -9,14 +9,16 @@
   });
   $('#previous').on('click', () => {
     if (param.currentPage !== 0) {
-      window.location.href = '/index.html?page=' + (param.currentPage - 1);
+      param.currentPage--;
+      getImage(param.currentPage);
     }
   });
   $('#next').on('click', () => {
     const from = param.currentPage*NUMBER_OF_IMAGES_PER_PAGE;
     const to = from + NUMBER_OF_IMAGES_PER_PAGE;
     if (to < totalImages) {
-      window.location.href = '/index.html?page=' + (param.currentPage + 1);
+      param.currentPage++;
+      getImage(param.currentPage);
     }
   });
   function parseParams() {
@@ -30,27 +32,30 @@
   }
   function createTag(src, info) {
     const imagetag = `<img class="img-responsive center-block" src="/cache/${src}"></img>`;
+    const d = new Date();
     if (info.localTime) {
-      const d = new Date();
       d.setTime(info.localTime);
-      return `<div class="row">${imagetag}<p class="text-center">${d}</p></div>`;
+      return `${imagetag}<p class="text-center">${d}</p>`;
     } else {
-      const d = new Date();
       d.setTime(info.mtime);
-      return `<div class="row">${imagetag}<p class="text-center">${d}?</p></div>`;
+      return `${imagetag}<p class="text-center">${d}?</p>`;
     }
   }
-  function getImage() {
+  function getImage(page:number) {
     $.getJSON('/cache/images', (data) => {
-      const from = param.currentPage*NUMBER_OF_IMAGES_PER_PAGE;
-      const to = from + NUMBER_OF_IMAGES_PER_PAGE;
+      const from = page*NUMBER_OF_IMAGES_PER_PAGE;
+      let to = (from + NUMBER_OF_IMAGES_PER_PAGE);
+      if (to > data.length) {
+        to = data.length;
+      }
+      $('#images').html('');
       for (let i = from; i < to; i++) {
+        $('#images').append(`<div class="row" id="id_${i}"></div>`);
         $.get(`/cache/check/${data[i][0]}`, () => {
-          $('#images').append(createTag(data[i][0], data[i][1]));
+          $(`#id_${i}`).html(createTag(data[i][0], data[i][1]));
         }).fail(() => {
-          $('#images').append(`<div>cannot get ${data[i][1].fullPath}</div>`)
+          $(`#id_${i}`).html(`<div>cannot get ${data[i][1].fullPath}</div>`)
         });
-        //console.log('<div class="center-block"><img src="/cache/' + data[i][0] + '"></img></div>')
       }
     });
   }
@@ -60,15 +65,10 @@
         if (totalImages === -1) {
           totalImages = data.totalImages;
         }
-        getImage();
+        getImage(param.currentPage);
       } else {
         setTimeout(getSummary, 1000);
       }
-      /*
-      if (data.totalImages === 0 || data.totalImages > !== data.preparedImages) {
-        setTimeout(getSummary, 1000);
-      }
-      */
     });
   }
 })();
