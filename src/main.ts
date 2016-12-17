@@ -242,7 +242,33 @@ class ImageScanner {
       console.log(err);
     });
   }
-  getThumbnail(key:string):Promise<Buffer> {
+  getRawImage(key:string):Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const fullPath = this.imagesByName.get(key).fullPath;
+      fs.readFile(fullPath, (err, data) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(data);
+      });
+    });
+  }
+  createThumbnail(key:string, width:number):Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const fullPath = this.imagesByName.get(key).fullPath;
+      sharp(fullPath)
+        .resize(width)
+        .toBuffer()
+        .then((data) => {
+          resolve(data);
+        })
+        .catch((err) => {
+          reject(err);
+        });
+    });
+  }
+  getThumbnail(key:string, width:number):Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const image = this.myImagesRoot + '.images/' + key;
       fs.stat(image, (err, stats) => {
@@ -258,12 +284,9 @@ class ImageScanner {
             reject(err);
             return;
           }
-          const fullPath = this.imagesByName.get(key).fullPath;
-          sharp(fullPath)
-            .resize(640)
-            .toBuffer()
+          this
+            .createThumbnail(key, width)
             .then((data) => {
-              //console.log('data.length:' + data.length);
               console.log('image:' + image + ':saved');
               fs.writeFileSync(image, data);
               resolve(data);
@@ -300,9 +323,21 @@ function main(myImagesRoot:string, name:string) {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));
     console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key)
+    scanner.getThumbnail(key, 200)
            .then((data) => {
              response.send('');
+           })
+           .catch((err) => {
+             response.status(404).send(`${err}`);
+           });
+  });
+  app.use('/cache/onetime', (request, response) => {
+    const parsedUrl = url.parse(request.url);
+    const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
+    console.log(`getRawImage:${key}`);
+    scanner.getRawImage(key)
+           .then((data) => {
+             response.send(data);
            })
            .catch((err) => {
              response.status(404).send(`${err}`);
@@ -312,7 +347,7 @@ function main(myImagesRoot:string, name:string) {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));
     console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key)
+    scanner.getThumbnail(key, 200)
            .then((data) => {
              response.send(data);
            })

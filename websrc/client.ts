@@ -21,6 +21,15 @@
       getImage(param.currentPage);
     }
   });
+  $('#myModal').on('show.bs.modal', (event) => {
+    const button = $(event.relatedTarget); // Button that triggered the modal
+    const recipient = button.data('whatever'); // Extract info from data-* attributes
+    // If necessary, you could initiate an AJAX request here (and then do the updating in a callback).
+    // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
+    const modal = $('#myModal');
+    modal.find('.modal-title').text(recipient);
+    modal.find('.modal-body').html(`<img class="img-responsive" src="/cache/onetime/${button.data('src')}.JPG">`);
+  });
   function parseParams() {
     const search = $(location).attr('search');
     const p:Array<string> = search.split('=');
@@ -31,15 +40,17 @@
     }
   }
   function createTag(src, info) {
-    const imagetag = `<img class="img-responsive center-block" src="/cache/${src}"></img>`;
     const d = new Date();
     if (info.localTime) {
       d.setTime(info.localTime);
-      return `${imagetag}<p class="text-center">${d}</p>`;
     } else {
       d.setTime(info.mtime);
-      return `${imagetag}<p class="text-center">${d}?</p>`;
     }
+    const img = `<img data-toggle="modal" data-target="#myModal" data-whatever="${info.fullPath}" data-src="${src}" src="/cache/${src}">`;
+    const label = `${d}`;
+    const caption = `<div class="caption">${label}</div>`;
+    const thumbnail = `<div class="thumbnail">${img}${caption}</div>`;
+    return thumbnail;
   }
   function getImage(page:number) {
     $.getJSON('/cache/images', (data) => {
@@ -49,13 +60,19 @@
         to = data.length;
       }
       $('#images').html('');
-      for (let i = from; i < to; i++) {
-        $('#images').append(`<div class="row" id="id_${i}"></div>`);
-        $.get(`/cache/check/${data[i][0]}`, () => {
-          $(`#id_${i}`).html(createTag(data[i][0], data[i][1]));
-        }).fail(() => {
-          $(`#id_${i}`).html(`<div>cannot get ${data[i][1].fullPath}</div>`)
-        });
+      for (let i = from; i < to; i += 4) {
+        const row = i;
+        $('#images').append(`<div class="row" id="row_${row}"></div>`);
+        for (let j = 0; j < 4; j++) {
+          if (row + j < to) {
+            $(`#row_${row}`).append(`<div class="col-sm-6 col-md-3" id="id_${row + j}"></div>`);
+            $.get(`/cache/check/${data[row + j][0]}`, () => {
+              $(`#id_${row + j}`).html(createTag(data[row + j][0], data[row + j][1]));
+            }).fail(() => {
+              $(`#id_${row + j}`).html(`<div>cannot get ${data[row + j][1].fullPath}</div>`)
+            });
+          }
+        }
       }
     });
   }
