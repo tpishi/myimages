@@ -28,7 +28,7 @@
     // Update the modal's content. We'll use jQuery here, but you could use a data binding library or other methods instead.
     const modal = $('#myModal');
     modal.find('.modal-title').text(recipient);
-    modal.find('.modal-body').html(`<img class="img-responsive" src="/cache/onetime/${button.data('src')}.JPG">`);
+    modal.find('.modal-body').html(`<img class="img-responsive" src="/raw/${button.data('src')}.JPG">`);
   });
   function parseParams() {
     const search = $(location).attr('search');

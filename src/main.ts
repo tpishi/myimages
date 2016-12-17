@@ -331,7 +331,7 @@ function main(myImagesRoot:string, name:string) {
              response.status(404).send(`${err}`);
            });
   });
-  app.use('/cache/onetime', (request, response) => {
+  app.use('/raw', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
     console.log(`getRawImage:${key}`);
