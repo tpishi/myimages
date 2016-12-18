@@ -4,8 +4,16 @@
   const param:any = {};
   const NUMBER_OF_IMAGES_PER_PAGE = 20;
   $(() => {
+    param.order = -1;
     parseParams();
     getSummary();
+  });
+  $('#order').change(() => {
+    const order = $('#order').is(':checked');
+    console.log('order:' + order);
+    param.order = (order) ? 1: -1;
+    param.currentPage = 0;
+    getImage(0);
   });
   $('#previous').on('click', () => {
     if (param.currentPage !== 0) {
@@ -39,40 +47,56 @@
       param.currentPage = 0;
     }
   }
-  function createTag(src, info) {
+  function getLocalTime(info) {
     const d = new Date();
     if (info.localTime) {
       d.setTime(info.localTime);
     } else {
       d.setTime(info.mtime);
     }
+    return d;
+  }
+  function createTag(src, info) {
+    const d = getLocalTime(info);
     const img = `<img data-toggle="modal" data-target="#myModal" data-whatever="${info.fullPath}" data-src="${src}" src="/cache/${src}">`;
     const label = `${d}`;
-    const caption = `<div class="caption">${label}</div>`;
+    const caption = ''/*`<div class="caption">${label}</div>`*/;
     const thumbnail = `<div class="thumbnail">${img}${caption}</div>`;
     return thumbnail;
   }
   function getImage(page:number) {
-    $.getJSON('/cache/images', (data) => {
-      const from = page*NUMBER_OF_IMAGES_PER_PAGE;
-      let to = (from + NUMBER_OF_IMAGES_PER_PAGE);
-      if (to > data.length) {
-        to = data.length;
-      }
+    const from = page*NUMBER_OF_IMAGES_PER_PAGE;
+    $.post('/cache/images', {
+      order: param.order,
+      from: from,
+      maxImages: NUMBER_OF_IMAGES_PER_PAGE
+    }, (data) => {
+      const to = data.length;
+      console.log('data.length:' + data.length);
       $('#images').html('');
-      for (let i = from; i < to; i += 4) {
-        const row = i;
-        $('#images').append(`<div class="row" id="row_${row}"></div>`);
-        for (let j = 0; j < 4; j++) {
-          if (row + j < to) {
-            $(`#row_${row}`).append(`<div class="col-sm-6 col-md-3" id="id_${row + j}"></div>`);
-            $.get(`/cache/check/${data[row + j][0]}`, () => {
-              $(`#id_${row + j}`).html(createTag(data[row + j][0], data[row + j][1]));
-            }).fail(() => {
-              $(`#id_${row + j}`).html(`<div>cannot get ${data[row + j][1].fullPath}</div>`)
-            });
-          }
+      let predate = '';
+      let row = 0;
+      let count = 0;
+      for (let i = 0; i < to; i++) {
+        const d = getLocalTime(data[i][1]).toLocaleDateString();
+        if (d !== predate) {
+          $('#images').append(`<div class="row" id="title_${d}"><div class="col-sm-12 col-md-12">${d}</div></div>`);
+          predate = d;
+          row = -1;
+          count = 0;
         }
+        const dd = d.replace(/\//g, '');
+        if ((count % 4) == 0) {
+          row++;
+          $('#images').append(`<div class="row" id="date_${dd}_${row}"></div>`);
+        }
+        $(`#date_${dd}_${row}`).append(`<div class="col-sm-6 col-md-3" id="id_${i}"></div>`);
+        $.get(`/cache/check/${data[i][0]}`, () => {
+          $(`#id_${i}`).html(createTag(data[i][0], data[i][1]));
+        }).fail(() => {
+          $(`#id_${i}`).html(`<div>cannot get ${data[i][1].fullPath}</div>`)
+        });
+        count++;
       }
     });
   }

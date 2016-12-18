@@ -9,6 +9,7 @@ import url = require('url');
 import sharp = require('sharp');
 import exif = require('fast-exif');
 
+import * as bodyParser from 'body-parser';
 import * as express from 'express';
 
 function listImageFiles(name:string):Promise<Array<any>> {
@@ -304,20 +305,28 @@ function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
   const app = express();
   app.listen(8080);
+  app.use(bodyParser());
   app.get('/cache/summary', (request, response) => {
     response.json({
       preparedImages: scanner.prepared,
       totalImages: scanner.total,
     });
   });
-  app.get('/cache/images', (request, response) => {
+  app.post('/cache/images', (request, response) => {
+    console.log('request.body:' + JSON.stringify(request.body));
+    const order = parseInt(request.body.order);
+    const from  = parseInt(request.body.from);
+    const maxImages = parseInt(request.body.maxImages);
+    console.log(`body:${order},${from},${maxImages}`);
     const array = [...scanner.imagesByName];
     array.sort((a, b) => {
       const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
       const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
-      return bTime - aTime;
+      return (aTime - bTime)*order;
     });
-    response.json(array);
+    console.log(`array.length:${array.length}`);
+    console.log(`subarray.length:${array.slice(from, from + maxImages).length}`);
+    response.json(array.slice(from, from+maxImages));
   });
   app.use('/cache/check', (request, response) => {
     const parsedUrl = url.parse(request.url);
