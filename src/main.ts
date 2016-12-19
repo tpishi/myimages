@@ -6,9 +6,9 @@ import crypto = require('crypto');
 import http = require('http');
 import path = require('path');
 import url = require('url');
-import sharp = require('sharp');
-import exif = require('fast-exif');
 
+import * as sharp from 'sharp';
+import * as exif from 'fast-exif';
 import * as bodyParser from 'body-parser';
 import * as express from 'express';
 
