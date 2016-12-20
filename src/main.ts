@@ -332,7 +332,7 @@ function main(myImagesRoot:string, name:string) {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));
     console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key, 200)
+    scanner.getThumbnail(key, 400)
            .then((data) => {
              response.send('');
            })
