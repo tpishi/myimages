@@ -59,12 +59,15 @@ function listImageFiles(name:string):Promise<Array<any>> {
 
 function calcHash(file:string):Promise<string> {
   return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      const hash = crypto.createHash('sha1');
-      const data = fs.readFileSync(file);
-      hash.update(data);
-      resolve(hash.digest().toString('hex'));
-    }, 0);
+    const hash = crypto.createHash('sha1');
+    hash.on('readable', () => {
+      const data:any = hash.read();
+      if (data) {
+        resolve(data.toString('hex'));
+      }
+    });
+    const stream = fs.createReadStream(file);
+    stream.pipe(hash);
   });
 }
 
@@ -243,18 +246,6 @@ class ImageScanner {
       console.log(err);
     });
   }
-  getRawImage(key:string):Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const fullPath = this.imagesByName.get(key).fullPath;
-      fs.readFile(fullPath, (err, data) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(data);
-      });
-    });
-  }
   createThumbnail(key:string, width:number):Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const fullPath = this.imagesByName.get(key).fullPath;
@@ -343,20 +334,18 @@ function main(myImagesRoot:string, name:string) {
   app.use('/raw', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
-    console.log(`getRawImage:${key}`);
-    scanner.getRawImage(key)
-           .then((data) => {
-             response.send(data);
-           })
-           .catch((err) => {
-             response.status(404).send(`${err}`);
-           });
+    const fullPath = scanner.imagesByName.get(key).fullPath;
+    try {
+      fs.createReadStream(fullPath).pipe(response);
+    } catch (err) {
+      response.status(404).send(`${err}`);
+    }
   });
   app.use('/cache', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));
     console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key, 200)
+    scanner.getThumbnail(key, 400)
            .then((data) => {
              response.send(data);
            })
