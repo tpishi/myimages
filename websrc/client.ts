@@ -80,7 +80,7 @@
       for (let i = 0; i < to; i++) {
         const d = getLocalTime(data[i][1]).toLocaleDateString();
         if (d !== predate) {
-          $('#images').append(`<div class="row" id="title_${d}"><div class="col-sm-12 col-md-12">${d}</div></div>`);
+          $('#images').append(`<div class="row" id="title_${d}"><div class="col-sm-12 col-md-12"><h2>${d}</h2></div></div>`);
           predate = d;
           row = -1;
           count = 0;

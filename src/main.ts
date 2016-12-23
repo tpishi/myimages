@@ -1,7 +1,6 @@
 'use strict';
 
 import fs = require('fs');
-import fsp = require('./fsp');
 import crypto = require('crypto');
 import http = require('http');
 import path = require('path');
@@ -11,6 +10,7 @@ import * as sharp from 'sharp';
 import * as exif from 'fast-exif';
 import * as bodyParser from 'body-parser';
 import * as express from 'express';
+import * as fsp from './fsp';
 
 function listImageFiles(name:string):Promise<Array<any>> {
   return new Promise((resolve, reject) => {
@@ -234,6 +234,11 @@ class ImageScanner {
           imageData.localTime = dd.getTime();
         }
         this.imagesByName.set(key, imageData);
+        try {
+          await this.getThumbnail(key, 400);
+        } catch (err) {
+          console.log(`await failed:${key} continue`);
+        }
         this.prepared++;
         if ((this.prepared % 10) === 0) {
           console.log(`${this.prepared}/${this.total}`);
@@ -279,11 +284,12 @@ class ImageScanner {
           this
             .createThumbnail(key, width)
             .then((data) => {
-              console.log('image:' + image + ':saved');
+              //console.log('image:' + image + ':saved');
               fs.writeFileSync(image, data);
               resolve(data);
             })
             .catch((err) => {
+              console.log(`key:${key}:${err}`);
               reject(err);
             });
         });
@@ -296,7 +302,7 @@ function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
   const app = express();
   app.listen(8080);
-  app.use(bodyParser());
+  app.use(bodyParser.json());
   app.get('/cache/summary', (request, response) => {
     response.json({
       preparedImages: scanner.prepared,
@@ -322,7 +328,7 @@ function main(myImagesRoot:string, name:string) {
   app.use('/cache/check', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1));
-    console.log(`getThumbnail:${key}`);
+    //console.log(`getThumbnail:${key}`);
     scanner.getThumbnail(key, 400)
            .then((data) => {
              response.send('');
@@ -359,5 +365,19 @@ function main(myImagesRoot:string, name:string) {
 
 const myImagesRoot:string = process.argv[1].replace('lib/main.js', '');
 const imageroot:string = path.resolve(process.argv[2]);
-
-main(myImagesRoot, imageroot);
+fsp.stat(`${myImagesRoot}.images`)
+  .then((stat) => {
+    if (stat.isDirectory()) {
+      main(myImagesRoot, imageroot);
+    }
+    console.log(`${myImagesRoot}.images already exist`);
+  })
+  .catch((err) => {
+    fsp.mkdir(`${myImagesRoot}.images`)
+      .then(() => {
+        main(myImagesRoot, imageroot);
+      })
+      .catch((err) => {
+        console.log(`${myImagesRoot}.images already exist`);
+      });
+  });

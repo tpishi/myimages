@@ -16,12 +16,24 @@ export function stat(path:string):Promise<fs.Stats> {
 
 export function readdir(dir:string):Promise<Array<string>> {
   return new Promise((resolve, reject) => {
-    fs.readdir(dir, async (err, files) => {
+    fs.readdir(dir, (err, files) => {
       if (err) {
         reject(err);
         return;
       }
       resolve(files);
+    });
+  });
+}
+
+export function mkdir(path:any) {
+  return new Promise((resolve, reject) => {
+    fs.mkdir(path, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
     });
   });
 }
