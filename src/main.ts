@@ -302,6 +302,9 @@ function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
   const app = express();
   app.listen(8080);
+  app.use(bodyParser.urlencoded({
+    extended: true
+  }));
   app.use(bodyParser.json());
   app.get('/cache/summary', (request, response) => {
     response.json({
@@ -369,8 +372,10 @@ fsp.stat(`${myImagesRoot}.images`)
   .then((stat) => {
     if (stat.isDirectory()) {
       main(myImagesRoot, imageroot);
+      return;
     }
     console.log(`${myImagesRoot}.images already exist`);
+    process.exit(1);
   })
   .catch((err) => {
     fsp.mkdir(`${myImagesRoot}.images`)
@@ -378,6 +383,11 @@ fsp.stat(`${myImagesRoot}.images`)
         main(myImagesRoot, imageroot);
       })
       .catch((err) => {
+        if (err && err.code === 'EEXIST') {
+          main(myImagesRoot, imageroot);
+          return;
+        }
         console.log(`${myImagesRoot}.images already exist`);
+        process.exit(1);
       });
   });
