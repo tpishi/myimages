@@ -219,7 +219,6 @@ class ImageScanner {
         const imageData:any = {};
         imageData.fullPath = fileObj.name;
         imageData.mtime = fileObj.mtime.getTime();
-        imageData.hash = await calcHash(fileObj.name);
         const exifTime = await getPhotoTime(fileObj.name);
         if ('DateTimeOriginal' in exifTime) {
           const src = exifTime.DateTimeOriginal;
@@ -234,16 +233,22 @@ class ImageScanner {
           imageData.localTime = dd.getTime();
         }
         this.imagesByName.set(key, imageData);
-        try {
-          await this.getThumbnail(key, 400);
-        } catch (err) {
-          console.log(`await failed:${key} continue`);
-        }
         this.prepared++;
         if ((this.prepared % 10) === 0) {
           console.log(`${this.prepared}/${this.total}`);
           this.save();
         }
+      }
+      const keys = this.imagesByName.keys();
+      for (let key of keys) {
+        const value = this.imagesByName.get(key);
+        value.hash = await calcHash(value.fullPath);
+        try {
+          await this.getThumbnail(key, 400);
+        } catch (err) {
+          console.log(`await failed:${key} continue`);
+        }
+        this.save();
       }
       console.log(`${this.prepared}/${this.total}`);
       this.save();
