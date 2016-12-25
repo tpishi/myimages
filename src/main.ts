@@ -6,11 +6,13 @@ import http = require('http');
 import path = require('path');
 import url = require('url');
 
+import * as sqlite3 from 'sqlite3';
 import * as sharp from 'sharp';
 import * as exif from 'fast-exif';
 import * as bodyParser from 'body-parser';
 import * as express from 'express';
 import * as fsp from './fsp';
+import * as db from './database';
 
 function listImageFiles(name:string):Promise<Array<any>> {
   return new Promise((resolve, reject) => {
@@ -153,9 +155,7 @@ class ImageScanner {
   prepared:number;
   total:number;
   myImagesRoot:string;
-  imagesByName:Map<string, any>;
-  dirMap:Map<string, string>;
-  reverseDirMap:Map<string, string>;
+  database:db.Database;
   constructor(myImagesRoot:string, name:string) {
     this.myImagesRoot = myImagesRoot;
     this.name = name;
@@ -164,48 +164,8 @@ class ImageScanner {
     }
     this.prepared = 0;
     this.total = 0;
-    this.load();
-  }
-  getShrinkDir(dir:string):string {
-    if (!this.dirMap.has(dir)) {
-      let loop = true;
-      let suggestion;
-      while (loop) {
-        loop = false;
-        suggestion = ('0000000' + (Math.floor(Math.random() * 0x7fffffff).toString(16))).slice(-8);
-        if (this.reverseDirMap.has(suggestion)) {
-          loop = true;
-        }
-      }
-      this.dirMap.set(dir, suggestion);
-      this.reverseDirMap.set(suggestion, dir);
-      //console.log(`added:${dir}:${this.dirMap.get(dir)}`);
-    }
-    return this.dirMap.get(dir);
-  }
-  load() {
-    try {
-      const buffer = fs.readFileSync(`${this.myImagesRoot}.images/database.json`);
-      const obj = JSON.parse(buffer.toString('utf-8'));
-      this.dirMap = new Map<string, string>(obj.dirMap);
-      this.reverseDirMap = new Map<string, string>();
-      for (let key of this.dirMap.keys()) {
-        this.reverseDirMap.set(this.dirMap.get(key), key);
-      }
-      this.imagesByName = new Map<string, any>(obj.imagesByName);
-    } catch (err) {
-      this.dirMap = new Map();
-      this.reverseDirMap = new Map();
-      this.imagesByName = new Map();
-    }
-  }
-  save() {
-    const obj = {
-      dirMap: [...this.dirMap],
-      imagesByName: [...this.imagesByName],
-    };
-    fs.writeFileSync(`${this.myImagesRoot}.images/database.json`, JSON.stringify(obj));
-    //console.log(`saved:dirMap:${obj.dirMap.length}:+imagesByName:${obj.imagesByName.length}`);
+    this.database = new db.JSONDatabase();
+    this.database.open(`${this.myImagesRoot}.images/database.json`);
   }
   scan() {
     listImageFiles(this.name).then(async (files) => {
@@ -214,11 +174,12 @@ class ImageScanner {
       // Here, forEach cannot be used.
       for (let fileObj of files) {
         const obj = path.parse(fileObj.name);
-        const shrinkDir = this.getShrinkDir(obj.dir);
+        const shrinkDir = this.database.getThumbnailDirectory(obj.dir);
         const key = shrinkDir + path.sep + obj.name + '.webp';
-        const imageData:any = {};
-        imageData.fullPath = fileObj.name;
-        imageData.mtime = fileObj.mtime.getTime();
+        const imageItem:db.ImageItem = {
+          fullPath: fileObj.name,
+          mtime: fileObj.mtime.getTime(),
+        };
         const exifTime = await getPhotoTime(fileObj.name);
         if ('DateTimeOriginal' in exifTime) {
           const src = exifTime.DateTimeOriginal;
@@ -230,35 +191,35 @@ class ImageScanner {
           dd.setMinutes(src.getUTCMinutes());
           dd.setSeconds(src.getUTCSeconds());
           dd.setMilliseconds(src.getUTCMilliseconds());
-          imageData.localTime = dd.getTime();
+          imageItem.localTime = dd.getTime();
         }
-        this.imagesByName.set(key, imageData);
+        this.database.putItem(key, imageItem);
         this.prepared++;
         if ((this.prepared % 10) === 0) {
           console.log(`${this.prepared}/${this.total}`);
-          this.save();
+          this.database.commit();
         }
       }
-      const keys = this.imagesByName.keys();
+      const keys = this.database.getItems().keys();
       for (let key of keys) {
-        const value = this.imagesByName.get(key);
+        const value = this.database.getItem(key);
         value.hash = await calcHash(value.fullPath);
         try {
           await this.getThumbnail(key, 400);
         } catch (err) {
           console.log(`await failed:${key} continue`);
         }
-        this.save();
+        this.database.commit();
       }
       console.log(`${this.prepared}/${this.total}`);
-      this.save();
+      this.database.commit();
     }).catch((err) => {
       console.log(err);
     });
   }
   createThumbnail(key:string, width:number):Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const fullPath = this.imagesByName.get(key).fullPath;
+      const fullPath = this.database.getItem(key).fullPath;
       sharp(fullPath)
         .resize(width)
         .toBuffer()
@@ -323,7 +284,7 @@ function main(myImagesRoot:string, name:string) {
     const from  = parseInt(request.body.from);
     const maxImages = parseInt(request.body.maxImages);
     console.log(`body:${order},${from},${maxImages}`);
-    const array = [...scanner.imagesByName];
+    const array = [...scanner.database.getItems()];
     array.sort((a, b) => {
       const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
       const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
@@ -348,7 +309,7 @@ function main(myImagesRoot:string, name:string) {
   app.use('/raw', (request, response) => {
     const parsedUrl = url.parse(request.url);
     const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
-    const fullPath = scanner.imagesByName.get(key).fullPath;
+    const fullPath = scanner.database.getItem(key).fullPath;
     try {
       fs.createReadStream(fullPath).pipe(response);
     } catch (err) {
