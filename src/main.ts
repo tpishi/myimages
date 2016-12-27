@@ -6,7 +6,6 @@ import http = require('http');
 import path = require('path');
 import url = require('url');
 
-import * as sqlite3 from 'sqlite3';
 import * as sharp from 'sharp';
 import * as exif from 'fast-exif';
 import * as bodyParser from 'body-parser';
@@ -14,7 +13,7 @@ import * as express from 'express';
 import * as fsp from './fsp';
 import * as db from './database';
 
-function listImageFiles(name:string):Promise<Array<any>> {
+function listImageFiles(name:string):Promise<Array<db.FileInfo>> {
   return new Promise((resolve, reject) => {
     const parsed = path.parse(name);
     if (parsed.base.startsWith('.')) {
@@ -47,8 +46,8 @@ function listImageFiles(name:string):Promise<Array<any>> {
                  name.endsWith('.jpeg') ||
                  name.endsWith('.JPEG')) {
         resolve([{
-          name: name,
-          mtime: stats.mtime,
+          fullPath: name,
+          mtime: stats.mtime.getTime(),
         }]);
       } else {
         resolve([]);
@@ -165,22 +164,20 @@ class ImageScanner {
     this.prepared = 0;
     this.total = 0;
     this.database = new db.JSONDatabase();
-    this.database.open(`${this.myImagesRoot}.images/database.json`);
+  }
+  init():Promise<void> {
+    new db.SQLiteDatabase().open(`${this.myImagesRoot}.images/database.sqlite3`);
+    return this.database.open(`${this.myImagesRoot}.images/database.json`);
   }
   scan() {
     listImageFiles(this.name).then(async (files) => {
       this.total = files.length;
       this.prepared = 0;
+      const keys = [];
       // Here, forEach cannot be used.
       for (let fileObj of files) {
-        const obj = path.parse(fileObj.name);
-        const shrinkDir = this.database.getThumbnailDirectory(obj.dir);
-        const key = shrinkDir + path.sep + obj.name + '.webp';
-        const imageItem:db.ImageItem = {
-          fullPath: fileObj.name,
-          mtime: fileObj.mtime.getTime(),
-        };
-        const exifTime = await getPhotoTime(fileObj.name);
+        const exifTime = await getPhotoTime(fileObj.fullPath);
+        let localTime;
         if ('DateTimeOriginal' in exifTime) {
           const src = exifTime.DateTimeOriginal;
           const dd = new Date();
@@ -191,19 +188,20 @@ class ImageScanner {
           dd.setMinutes(src.getUTCMinutes());
           dd.setSeconds(src.getUTCSeconds());
           dd.setMilliseconds(src.getUTCMilliseconds());
-          imageItem.localTime = dd.getTime();
+          localTime = dd.getTime();
         }
-        this.database.putItem(key, imageItem);
+        console.log(`${fileObj.fullPath}`);
+        const key = await this.database.insertItem(fileObj, localTime);
+        keys.push(key);
         this.prepared++;
         if ((this.prepared % 10) === 0) {
           console.log(`${this.prepared}/${this.total}`);
           this.database.commit();
         }
       }
-      const keys = this.database.getItems().keys();
       for (let key of keys) {
-        const value = this.database.getItem(key);
-        value.hash = await calcHash(value.fullPath);
+        const value = await this.database.getItem(key);
+        await this.database.updateHash(key, value.fullPath);
         try {
           await this.getThumbnail(key, 400);
         } catch (err) {
@@ -218,9 +216,9 @@ class ImageScanner {
     });
   }
   createThumbnail(key:string, width:number):Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const fullPath = this.database.getItem(key).fullPath;
-      sharp(fullPath)
+    return new Promise(async (resolve, reject) => {
+      const item = await this.database.getItem(key);
+      sharp(item.fullPath)
         .resize(width)
         .toBuffer()
         .then((data) => {
@@ -266,70 +264,76 @@ class ImageScanner {
 
 function main(myImagesRoot:string, name:string) {
   let scanner:ImageScanner = new ImageScanner(myImagesRoot, name);
-  const app = express();
-  app.listen(8080);
-  app.use(bodyParser.urlencoded({
-    extended: true
-  }));
-  app.use(bodyParser.json());
-  app.get('/cache/summary', (request, response) => {
-    response.json({
-      preparedImages: scanner.prepared,
-      totalImages: scanner.total,
+  scanner.init().then(() => {
+    const app = express();
+    app.listen(8080);
+    app.use(bodyParser.urlencoded({
+      extended: true
+    }));
+    app.use(bodyParser.json());
+    app.get('/cache/summary', (request, response) => {
+      response.json({
+        preparedImages: scanner.prepared,
+        totalImages: scanner.total,
+      });
     });
-  });
-  app.post('/cache/images', (request, response) => {
-    console.log('request.body:' + JSON.stringify(request.body));
-    const order = parseInt(request.body.order);
-    const from  = parseInt(request.body.from);
-    const maxImages = parseInt(request.body.maxImages);
-    console.log(`body:${order},${from},${maxImages}`);
-    const array = [...scanner.database.getItems()];
-    array.sort((a, b) => {
-      const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
-      const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
-      return (aTime - bTime)*order;
+    app.post('/cache/images', (request, response) => {
+      console.log('request.body:' + JSON.stringify(request.body));
+      const order = parseInt(request.body.order);
+      const from  = parseInt(request.body.from);
+      const maxImages = parseInt(request.body.maxImages);
+      console.log(`body:${order},${from},${maxImages}`);
+      scanner.database.getItems().then((map) => {
+        const array = [...map];
+        array.sort((a, b) => {
+          const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
+          const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
+          return (aTime - bTime)*order;
+        });
+        console.log(`array.length:${array.length}`);
+        console.log(`subarray.length:${array.slice(from, from + maxImages).length}`);
+        response.json(array.slice(from, from+maxImages));
+      }).catch((err) => {
+        response.status(404).send(`${err}`);
+      });
     });
-    console.log(`array.length:${array.length}`);
-    console.log(`subarray.length:${array.slice(from, from + maxImages).length}`);
-    response.json(array.slice(from, from+maxImages));
+    app.use('/cache/check', (request, response) => {
+      const parsedUrl = url.parse(request.url);
+      const key = decodeURIComponent(parsedUrl.pathname.substr(1));
+      //console.log(`getThumbnail:${key}`);
+      scanner.getThumbnail(key, 400)
+            .then((data) => {
+              response.send('');
+            })
+            .catch((err) => {
+              response.status(404).send(`${err}`);
+            });
+    });
+    app.use('/raw', (request, response) => {
+      const parsedUrl = url.parse(request.url);
+      const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
+      scanner.database.getItem(key).then((item) => {
+        const fullPath = item.fullPath;
+        fs.createReadStream(fullPath).pipe(response);
+      }).catch((err) => {
+        response.status(404).send(`${err}`);
+      });
+    });
+    app.use('/cache', (request, response) => {
+      const parsedUrl = url.parse(request.url);
+      const key = decodeURIComponent(parsedUrl.pathname.substr(1));
+      console.log(`getThumbnail:${key}`);
+      scanner.getThumbnail(key, 400)
+            .then((data) => {
+              response.send(data);
+            })
+            .catch((err) => {
+              response.status(404).send(`${err}`);
+            });
+    });
+    app.use(express.static('websrc'));
+    scanner.scan();
   });
-  app.use('/cache/check', (request, response) => {
-    const parsedUrl = url.parse(request.url);
-    const key = decodeURIComponent(parsedUrl.pathname.substr(1));
-    //console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key, 400)
-           .then((data) => {
-             response.send('');
-           })
-           .catch((err) => {
-             response.status(404).send(`${err}`);
-           });
-  });
-  app.use('/raw', (request, response) => {
-    const parsedUrl = url.parse(request.url);
-    const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
-    const fullPath = scanner.database.getItem(key).fullPath;
-    try {
-      fs.createReadStream(fullPath).pipe(response);
-    } catch (err) {
-      response.status(404).send(`${err}`);
-    }
-  });
-  app.use('/cache', (request, response) => {
-    const parsedUrl = url.parse(request.url);
-    const key = decodeURIComponent(parsedUrl.pathname.substr(1));
-    console.log(`getThumbnail:${key}`);
-    scanner.getThumbnail(key, 400)
-           .then((data) => {
-             response.send(data);
-           })
-           .catch((err) => {
-             response.status(404).send(`${err}`);
-           });
-  });
-  app.use(express.static('websrc'));
-  scanner.scan();
 }
 
 const myImagesRoot:string = process.argv[1].replace('lib/main.js', '');
