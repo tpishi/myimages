@@ -163,11 +163,14 @@ class ImageScanner {
     }
     this.prepared = 0;
     this.total = 0;
-    this.database = new db.JSONDatabase();
+    //this.database = new db.JSONDatabase();
+    this.database = new db.SQLiteDatabase();//.open(`${this.myImagesRoot}.images/database.sqlite3`);
   }
   init():Promise<void> {
-    new db.SQLiteDatabase().open(`${this.myImagesRoot}.images/database.sqlite3`);
-    return this.database.open(`${this.myImagesRoot}.images/database.json`);
+    //const test = new db.SQLiteDatabase().open(`${this.myImagesRoot}.images/database.sqlite3`);
+    //test.addDirItem();
+    //return this.database.open(`${this.myImagesRoot}.images/database.json`);
+    return this.database.open(`${this.myImagesRoot}.images/database.sqlite3`);
   }
   scan() {
     listImageFiles(this.name).then(async (files) => {
@@ -201,7 +204,8 @@ class ImageScanner {
       }
       for (let key of keys) {
         const value = await this.database.getItem(key);
-        await this.database.updateHash(key, value.fullPath);
+        const hash = await calcHash(value.fullPath);
+        await this.database.updateHash(key, hash);
         try {
           await this.getThumbnail(key, 400);
         } catch (err) {
