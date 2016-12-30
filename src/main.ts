@@ -176,7 +176,7 @@ class ImageScanner {
     listImageFiles(this.name).then(async (files) => {
       this.total = files.length;
       this.prepared = 0;
-      const keys = [];
+      const ids = [];
       // Here, forEach cannot be used.
       for (let fileObj of files) {
         const exifTime = await getPhotoTime(fileObj.fullPath);
@@ -193,35 +193,32 @@ class ImageScanner {
           dd.setMilliseconds(src.getUTCMilliseconds());
           localTime = dd.getTime();
         }
-        console.log(`${fileObj.fullPath}`);
-        const key = await this.database.insertItem(fileObj, localTime);
-        keys.push(key);
+        //console.log(`${fileObj.fullPath}`);
+        const id = await this.database.insertOrUpdateItem(fileObj, localTime);
+        ids.push(id);
         this.prepared++;
         if ((this.prepared % 10) === 0) {
           console.log(`${this.prepared}/${this.total}`);
-          this.database.commit();
         }
       }
-      for (let key of keys) {
-        const value = await this.database.getItem(key);
-        const hash = await calcHash(value.fullPath);
-        await this.database.updateHash(key, hash);
+      for (let id of ids) {
+        const value = await this.database.getItem(id);
+        value.hash = await calcHash(value.fullPath);
+        await this.database.updateItem(value);
         try {
-          await this.getThumbnail(key, 400);
+          await this.getThumbnail(id, 400);
         } catch (err) {
-          console.log(`await failed:${key} continue`);
+          console.log(`await failed:${id} continue`);
         }
-        this.database.commit();
       }
       console.log(`${this.prepared}/${this.total}`);
-      this.database.commit();
     }).catch((err) => {
       console.log(err);
     });
   }
-  createThumbnail(key:string, width:number):Promise<Buffer> {
+  createThumbnail(id:number, width:number):Promise<Buffer> {
     return new Promise(async (resolve, reject) => {
-      const item = await this.database.getItem(key);
+      const item = await this.database.getItem(id);
       sharp(item.fullPath)
         .resize(width)
         .toBuffer()
@@ -229,13 +226,14 @@ class ImageScanner {
           resolve(data);
         })
         .catch((err) => {
+          console.log(`createThumbnail:err:${id}:${item.fullPath}:${err}`);
           reject(err);
         });
     });
   }
-  getThumbnail(key:string, width:number):Promise<Buffer> {
+  getThumbnail(id:number, width:number):Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const image = this.myImagesRoot + '.images/' + key;
+      const image = this.myImagesRoot + '.images/' + this.database.getThumbnailPath(id);
       fs.stat(image, (err, stats) => {
         if (!err) {
           //console.log('image:found:' + image);
@@ -250,14 +248,14 @@ class ImageScanner {
             return;
           }
           this
-            .createThumbnail(key, width)
+            .createThumbnail(id, width)
             .then((data) => {
               //console.log('image:' + image + ':saved');
               fs.writeFileSync(image, data);
               resolve(data);
             })
             .catch((err) => {
-              console.log(`key:${key}:${err}`);
+              console.log(`key:${id}:${err}`);
               reject(err);
             });
         });
@@ -303,9 +301,9 @@ function main(myImagesRoot:string, name:string) {
     });
     app.use('/cache/check', (request, response) => {
       const parsedUrl = url.parse(request.url);
-      const key = decodeURIComponent(parsedUrl.pathname.substr(1));
-      //console.log(`getThumbnail:${key}`);
-      scanner.getThumbnail(key, 400)
+      const id = parseInt(decodeURIComponent(parsedUrl.pathname.substr(1)));
+      //console.log(`getThumbnail:${id}`);
+      scanner.getThumbnail(id, 400)
             .then((data) => {
               response.send('');
             })
@@ -315,8 +313,8 @@ function main(myImagesRoot:string, name:string) {
     });
     app.use('/raw', (request, response) => {
       const parsedUrl = url.parse(request.url);
-      const key = decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4);
-      scanner.database.getItem(key).then((item) => {
+      const id = parseInt(decodeURIComponent(parsedUrl.pathname.substr(1)).slice(0,-4));
+      scanner.database.getItem(id).then((item) => {
         const fullPath = item.fullPath;
         fs.createReadStream(fullPath).pipe(response);
       }).catch((err) => {
@@ -325,9 +323,9 @@ function main(myImagesRoot:string, name:string) {
     });
     app.use('/cache', (request, response) => {
       const parsedUrl = url.parse(request.url);
-      const key = decodeURIComponent(parsedUrl.pathname.substr(1));
-      console.log(`getThumbnail:${key}`);
-      scanner.getThumbnail(key, 400)
+      const id = parseInt(decodeURIComponent(parsedUrl.pathname.substr(1)));
+      console.log(`getThumbnail:${id}`);
+      scanner.getThumbnail(id, 400)
             .then((data) => {
               response.send(data);
             })
