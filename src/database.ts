@@ -83,12 +83,6 @@ abstract class DatabaseImpl implements Database {
   }
 }
 
-function makeThumbnailPath(id:number):string {
-  const parent = ('0000' + Math.floor(id / MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
-  const name = ('0000' + (id % MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
-  return parent + path.sep + name + '.webp';
-}
-
 export class SQLiteDatabase extends DatabaseImpl {
   private _db;
   open(dbpath:string):Promise<void> {
