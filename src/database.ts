@@ -12,14 +12,14 @@ export interface FileInfo {
 }
 
 export interface ImageItem extends FileInfo {
-  thumbnailDir:string;
+  imageTime:number;
   hash?:string;
-  localTime?:number;
+  exifTime?:number;
 }
 
 export interface Database {
   open(dbpath:string):Promise<void>;
-  insertOrUpdateItem(info:FileInfo, localTime?:number):Promise<number>;
+  insertOrUpdateItem(info:FileInfo, exifTime?:number):Promise<number>;
   getItems():Promise<any>;
   getItem(id:number):Promise<ImageItem>;
   updateItem(item:ImageItem):Promise<number>;
@@ -33,23 +33,25 @@ abstract class DatabaseImpl implements Database {
   abstract getItem(id:number):Promise<ImageItem>;
   abstract updateItem(item:ImageItem):Promise<number>;
   protected abstract insertItem(value:ImageItem):Promise<number>;
-  protected abstract existsItem(item:ImageItem):Promise<boolean>;
+  protected abstract findId(item:ImageItem):Promise<number>;
   createItem(info:FileInfo):Promise<ImageItem> {
     return new Promise((resolve, reject) => {
       resolve({
         fullPath: info.fullPath,
         mtime: info.mtime,
+        imageTime: info.mtime,
       });
     });
   }
-  insertOrUpdateItem(info:FileInfo, localTime?:number):Promise<number> {
+  insertOrUpdateItem(info:FileInfo, exifTime?:number):Promise<number> {
     return new Promise<number>(async (resolve, reject) => {
       const imageItem:ImageItem = await this.createItem(info);
-      this.existsItem(imageItem).then((exists) => {
-        if (!exists) {
-          if (typeof localTime !== 'undefined') {
-            imageItem.localTime = localTime;
-          }
+      this.findId(imageItem).then((id) => {
+        if (typeof exifTime !== 'undefined') {
+          imageItem.exifTime = exifTime;
+          imageItem.imageTime = exifTime;
+        }
+        if (id === -1) {
           this.insertItem(imageItem).then((key) => {
             resolve(key);
           });
@@ -86,7 +88,7 @@ export class SQLiteDatabase extends DatabaseImpl {
   open(dbpath:string):Promise<void> {
     return new Promise<void>((resolve, reject) => {
       this._db = new sqlite3.Database(dbpath);
-      const SQL_INFO = 'CREATE TABLE IF NOT EXISTS info (id INTEGER PRIMARY KEY, thumbnailDir TEXT, fullPath TEXT UNIQUE, mtime INTEGER, localTime INTEGER NULL, hash TEXT NULL)';
+      const SQL_INFO = 'CREATE TABLE IF NOT EXISTS info (id INTEGER PRIMARY KEY, fullPath TEXT UNIQUE, imageTime INGETER, mtime INTEGER, exifTime INTEGER NULL, hash TEXT NULL)';
       this._db.run(SQL_INFO, (err) => {
         if (err) {
           reject(err);
@@ -96,28 +98,35 @@ export class SQLiteDatabase extends DatabaseImpl {
       });
     });
   }
-  existsItem(item:ImageItem):Promise<boolean> {
-    return new Promise<boolean>((resolve, reject) => {
-      const SQL = 'SELECT COUNT(*) FROM info WHERE fullPath = ?';
+  findId(item:ImageItem):Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      const SQL = 'SELECT id FROM info WHERE fullPath = ?';
       this._db.get(SQL, [item.fullPath], (err, res) => {
         if (err) {
+          console.log(`findId:${err}`);
           reject(err);
           return;
         }
-        //console.log('res:' + JSON.stringify(res));
-        resolve(res['COUNT(*)'] !== 0);
+        if (res) {
+          //console.log(`findId:${JSON.stringify(res)}`);
+          resolve(res['id']);
+        } else {
+          resolve(-1);
+        }
       });
     });
   }
   updateItem(item:ImageItem):Promise<number> {
     return new Promise<number>((resolve, reject) => {
-      let sql = 'UPDATE info SET mtime = $mtime';
+      let sql = 'UPDATE info SET mtime = $mtime, imageTime = $imageTime';
       const args:any = {
-        $mtime: item.mtime
+        $mtime: item.mtime,
+        $imageTime: item.imageTime
       };
-      if (Number.isInteger(item.localTime)) {
-        sql += ' , localTime = $localTime';
-        args.$localTime = item.localTime;
+      if (Number.isInteger(item.exifTime)) {
+        sql += ', exifTime = $exifTime';
+        args.$exifTime = item.exifTime;
+        args.$imageTime = item.exifTime;
       }
       if (item.hash) {
         sql += ' , hash = $hash';
@@ -133,47 +142,35 @@ export class SQLiteDatabase extends DatabaseImpl {
           reject(err);
           return;
         }
-        const SQL = 'SELECT id, thumbnailDir FROM info WHERE fullPath = $fullPath';
-        const args2 = {$fullPath: item.fullPath};
-        this._db.all(SQL, args2, (err, rows) => {
-          if (err) {
-            //console.log('SQL:' + SQL);
-            //console.log('args2:' + args2);
-            console.log('all:err:' + err);
-            reject(err);
-            return;
-          }
-          //console.log(`updateItem:rows = ${JSON.stringify(rows)}`);
-          resolve(rows[0].id);
-        });
+        this.findId(item).then(id => resolve(id));
       });
     });
   }
   insertItem(item:ImageItem):Promise<number> {
     return new Promise<number>((resolve, reject) => {
       let sql, args;
-      if (typeof item.localTime !== 'undefined') {
-        sql = 'INSERT INTO info (fullPath, mtime, localTime) values ( $fullPath, $mtime, $localTime )';
+      if (typeof item.exifTime !== 'undefined') {
+        sql = 'INSERT INTO info (fullPath, imageTime, mtime, exifTime) values ( $fullPath, $imageTime, $mtime, $exifTime )';
         args = {
           $fullPath: item.fullPath,
+          $imageTime: item.imageTime,
           $mtime: item.mtime,
-          $localTime: item.localTime
+          $exifTime: item.exifTime
         };
       } else {
-        sql = 'INSERT INTO info (fullPath, mtime) values ( $fullPath, $mtime )';
+        sql = 'INSERT INTO info (fullPath, imageTime, mtime) values ( $fullPath, $imageTime, $mtime )';
         args = {
           $fullPath: item.fullPath,
+          $imageTime: item.imageTime,
           $mtime: item.mtime
         };
       }
-      // WARN: do not use arrow function, since we need to obtain lastID from special this object
-      this._db.run(sql, args, function (err) {
+      this._db.run(sql, args, (err) => {
         if (err) {
           reject(err);
           return;
         }
-        //console.log(`insertItem:lastID = ${this.lastID}`);
-        resolve(this.lastID);
+        this.findId(item).then(id => resolve(id));
       });
     });
   }
@@ -191,7 +188,7 @@ export class SQLiteDatabase extends DatabaseImpl {
         const map = new Map();
         rows.forEach((item) => {
           map.set(item.id, item);
-          //console.log(`getItems:${item.id},${item.fullPath}`);
+          console.log(`getItems:${item.id},${item.fullPath},${item.imageTime},${item.exifTime}`);
         });
         //console.log('getItems:' + JSON.stringify(map));
         //process.exit(1);

@@ -18,7 +18,7 @@
   "homepage": "https://github.com/tpishi/myimages#readme",
   "dependencies": {
     "@types/express": "^4.0.34",
-    "@types/jquery": "^2.0.34",
+    "@types/jquery": "^2.0.35",
     "@types/node": "6.0.52",
     "body-parser": "^1.15.2",
     "express": "^4.14.0",

@@ -288,8 +288,8 @@ function main(myImagesRoot:string, name:string) {
       scanner.database.getItems().then((map) => {
         const array = [...map];
         array.sort((a, b) => {
-          const aTime = (a[1].localTime) ? a[1].localTime: a[1].mtime;
-          const bTime = (b[1].localTime) ? b[1].localTime: b[1].mtime;
+          const aTime = a[1].imageTime;
+          const bTime = b[1].imageTime;
           return (aTime - bTime)*order;
         });
         console.log(`array.length:${array.length}`);

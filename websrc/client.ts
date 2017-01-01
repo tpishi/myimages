@@ -49,11 +49,12 @@
   }
   function getLocalTime(info) {
     const d = new Date();
-    if (info.localTime) {
-      d.setTime(info.localTime);
+    if (info.exifTime) {
+      d.setTime(info.exifTime);
     } else {
       d.setTime(info.mtime);
     }
+    console.log(`${info.exifTime},${d.toLocaleDateString()}`);
     return d;
   }
   function createTag(src, info) {
