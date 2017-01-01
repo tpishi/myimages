@@ -281,20 +281,14 @@ function main(myImagesRoot:string, name:string) {
     });
     app.post('/cache/images', (request, response) => {
       console.log('request.body:' + JSON.stringify(request.body));
-      const order = parseInt(request.body.order);
-      const from  = parseInt(request.body.from);
-      const maxImages = parseInt(request.body.maxImages);
-      console.log(`body:${order},${from},${maxImages}`);
-      scanner.database.getItems().then((map) => {
-        const array = [...map];
-        array.sort((a, b) => {
-          const aTime = a[1].imageTime;
-          const bTime = b[1].imageTime;
-          return (aTime - bTime)*order;
-        });
-        console.log(`array.length:${array.length}`);
-        console.log(`subarray.length:${array.slice(from, from + maxImages).length}`);
-        response.json(array.slice(from, from+maxImages));
+      const filterOptions:db.FilterOptions = {
+        descend: (request.body.order === '-1'),
+        offset: request.body.from,
+        limit: request.body.maxImages,
+      };
+      scanner.database.getItems(filterOptions).then((array) => {
+        console.log(`getItems():${JSON.stringify(array)}`);
+        response.json(array);
       }).catch((err) => {
         response.status(404).send(`${err}`);
       });

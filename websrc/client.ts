@@ -47,18 +47,8 @@
       param.currentPage = 0;
     }
   }
-  function getLocalTime(info) {
-    const d = new Date();
-    if (info.exifTime) {
-      d.setTime(info.exifTime);
-    } else {
-      d.setTime(info.mtime);
-    }
-    console.log(`${info.exifTime},${d.toLocaleDateString()}`);
-    return d;
-  }
   function createTag(src, info) {
-    const d = getLocalTime(info);
+    const d = new Date(info.imageTime);
     const img = `<img data-toggle="modal" data-target="#myModal" data-whatever="${info.fullPath}" data-src="${src}" src="/cache/${src}">`;
     const label = `${d}`;
     const caption = ''/*`<div class="caption">${label}</div>`*/;
@@ -79,7 +69,8 @@
       let row = 0;
       let count = 0;
       for (let i = 0; i < to; i++) {
-        const d = getLocalTime(data[i][1]).toLocaleDateString();
+        const p = data[i];
+        const d = new Date(p.imageTime).toLocaleDateString();
         if (d !== predate) {
           $('#images').append(`<div class="row" id="title_${d}"><div class="col-sm-12 col-md-12"><h2>${d}</h2></div></div>`);
           predate = d;
@@ -92,10 +83,10 @@
           $('#images').append(`<div class="row" id="date_${dd}_${row}"></div>`);
         }
         $(`#date_${dd}_${row}`).append(`<div class="col-sm-6 col-md-3" id="id_${i}"></div>`);
-        $.get(`/cache/check/${data[i][0]}`, () => {
-          $(`#id_${i}`).html(createTag(data[i][0], data[i][1]));
+        $.get(`/cache/check/${p.id}`, () => {
+          $(`#id_${i}`).html(createTag(p.id, p));
         }).fail(() => {
-          $(`#id_${i}`).html(`<div>cannot get ${data[i][1].fullPath}</div>`)
+          $(`#id_${i}`).html(`<div>cannot get ${p.fullPath}</div>`)
         });
         count++;
       }

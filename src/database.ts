@@ -17,10 +17,16 @@ export interface ImageItem extends FileInfo {
   exifTime?:number;
 }
 
+export interface FilterOptions {
+  descend:boolean;
+  offset:number;
+  limit:number;
+}
+
 export interface Database {
   open(dbpath:string):Promise<void>;
   insertOrUpdateItem(info:FileInfo, exifTime?:number):Promise<number>;
-  getItems():Promise<any>;
+  getItems(options:FilterOptions):Promise<Array<ImageItem>>;
   getItem(id:number):Promise<ImageItem>;
   updateItem(item:ImageItem):Promise<number>;
   getThumbnailPath(id:number):string;
@@ -29,7 +35,7 @@ export interface Database {
 abstract class DatabaseImpl implements Database {
   protected _dbpath:string;
   abstract open(dbpath:string):Promise<void>;
-  abstract getItems():Promise<Map<string,ImageItem>>;
+  abstract getItems(options:FilterOptions):Promise<Array<ImageItem>>;
   abstract getItem(id:number):Promise<ImageItem>;
   abstract updateItem(item:ImageItem):Promise<number>;
   protected abstract insertItem(value:ImageItem):Promise<number>;
@@ -174,25 +180,20 @@ export class SQLiteDatabase extends DatabaseImpl {
       });
     });
   }
-  getItems():Promise<Map<string,ImageItem>> {
-    return new Promise<Map<string,ImageItem>>((resolve, reject) => {
-      console.log('getItems()');
-      const SQL = 'SELECT * FROM info';
-      this._db.all(SQL, (err,rows) => {
+  getItems(options:FilterOptions):Promise<Array<ImageItem>> {
+    return new Promise<Array<ImageItem>>((resolve, reject) => {
+      console.log(`getItems(${JSON.stringify(options)})`);
+      const SELECT = 'SELECT * FROM info';
+      const ORDERBY = 'ORDER BY imageTime ' + ((options.descend) ? 'DESC': 'ASC');
+      const LIMITOFFSET = 'LIMIT ? OFFSET ?';
+      const SQL = `${SELECT} ${ORDERBY} ${LIMITOFFSET}`;
+      this._db.all(SQL, [options.limit, options.offset], (err,rows) => {
         if (err) {
           console.log('reject:' + err);
           reject(err);
           return;
         }
-        //console.log(JSON.stringify(rows));
-        const map = new Map();
-        rows.forEach((item) => {
-          map.set(item.id, item);
-          console.log(`getItems:${item.id},${item.fullPath},${item.imageTime},${item.exifTime}`);
-        });
-        //console.log('getItems:' + JSON.stringify(map));
-        //process.exit(1);
-        resolve(map);
+        resolve(rows);
       });
     });
   }
