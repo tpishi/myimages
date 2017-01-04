@@ -335,25 +335,21 @@ function main(myImagesRoot:string, name:string) {
 const myImagesRoot:string = process.argv[1].replace('lib/main.js', '');
 const imageroot:string = path.resolve(process.argv[2]);
 fsp.stat(`${myImagesRoot}.images`)
-  .then((stat) => {
-    if (stat.isDirectory()) {
-      main(myImagesRoot, imageroot);
-      return;
-    }
-    console.log(`${myImagesRoot}.images already exist`);
-    process.exit(1);
-  })
-  .catch((err) => {
-    fsp.mkdir(`${myImagesRoot}.images`)
-      .then(() => {
-        main(myImagesRoot, imageroot);
-      })
-      .catch((err) => {
-        if (err && err.code === 'EEXIST') {
+   .then((stat) => {
+     if (stat.isDirectory()) {
+       main(myImagesRoot, imageroot);
+       return;
+     }
+     console.log(`${myImagesRoot}.images already exist`);
+     process.exit(1);
+   })
+   .catch((err) => {
+     fsp.mkdir(`${myImagesRoot}.images`)
+        .then(() => {
           main(myImagesRoot, imageroot);
-          return;
-        }
-        console.log(`${myImagesRoot}.images already exist`);
-        process.exit(1);
-      });
-  });
+        })
+        .catch((err) => {
+          console.log(`${myImagesRoot}.images already exist`);
+          process.exit(1);
+       });
+   });

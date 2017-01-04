@@ -28,7 +28,7 @@ export interface Database {
   insertOrUpdateItem(info:FileInfo, exifTime?:number):Promise<number>;
   getItems(options:FilterOptions):Promise<Array<ImageItem>>;
   getItem(id:number):Promise<ImageItem>;
-  updateItem(item:ImageItem):Promise<number>;
+  updateItem(item:ImageItem):Promise<void>;
   getThumbnailPath(id:number):string;
 }
 
@@ -37,9 +37,11 @@ abstract class DatabaseImpl implements Database {
   abstract open(dbpath:string):Promise<void>;
   abstract getItems(options:FilterOptions):Promise<Array<ImageItem>>;
   abstract getItem(id:number):Promise<ImageItem>;
-  abstract updateItem(item:ImageItem):Promise<number>;
-  protected abstract insertItem(value:ImageItem):Promise<number>;
-  protected abstract findId(item:ImageItem):Promise<number>;
+  abstract updateItem(item:ImageItem):Promise<void>;
+  protected abstract insertItem(value:ImageItem):Promise<void>;
+  protected abstract findImageId(item:ImageItem):Promise<number>;
+  protected abstract removeSystemTags(item:ImageItem):Promise<void>;
+  protected abstract addSystemTags(imageId:number):Promise<void>;
   createItem(info:FileInfo):Promise<ImageItem> {
     return new Promise((resolve, reject) => {
       resolve({
@@ -54,17 +56,26 @@ abstract class DatabaseImpl implements Database {
       .createItem(info)
       .then((item) => {
         imageItem = item;
-        return this.findId(item);
+        return this.findImageId(item);
       })
-      .then((imageId) => {
+      .then((id) => {
         if (typeof exifTime !== 'undefined') {
           imageItem.exifTime = exifTime;
         }
-        if (imageId === -1) {
+        if (id === -1) {
           return this.insertItem(imageItem);
         } else {
           return this.updateItem(imageItem);
         }
+      })
+      .then(() => {
+        return this.findImageId(imageItem);
+      })
+      .then((imageId) => {
+        return this.addSystemTags(imageId);
+      })
+      .then(() => {
+        return this.findImageId(imageItem);
       });
   }
   protected getIdFromThumbnailPath(thumbnailPath:string):number {
@@ -135,14 +146,14 @@ export class SQLiteDatabase extends DatabaseImpl {
         return Promise.all(array);
       });
   }
-  findId(item:ImageItem):Promise<number> {
+  findImageId(item:ImageItem):Promise<number> {
     const SQL = 'SELECT imageId FROM images WHERE fullPath = ?';
     return this.get(SQL, [item.fullPath]).then((row) => {
       return (row) ? row['imageId']: -1;
     });
   }
 
-  updateItem(item:ImageItem):Promise<number> {
+  updateItem(item:ImageItem):Promise<void> {
     let sql:string = 'UPDATE images SET mtime = $mtime';
     const args:any = {
       $mtime: item.mtime,
@@ -163,13 +174,9 @@ export class SQLiteDatabase extends DatabaseImpl {
     args.$fullPath = item.fullPath;
     //console.log('SQL:' + sql);
     //console.log('args:' + JSON.stringify(args));
-    return this
-      .run(sql, args)
-      .then(() => {
-        return this.findId(item);
-      });
+    return this.run(sql, args);
   }
-  insertItem(item:ImageItem):Promise<number> {
+  insertItem(item:ImageItem):Promise<void> {
     let sql, args;
     if (typeof item.exifTime !== 'undefined') {
       sql = 'INSERT INTO images (fullPath, mtime, exifTime) values ( $fullPath, $mtime, $exifTime )';
@@ -185,11 +192,7 @@ export class SQLiteDatabase extends DatabaseImpl {
         $mtime: item.mtime
       };
     }
-    return this
-      .run(sql, args)
-      .then(() => {
-        return this.findId(item);
-      });
+    return this.run(sql, args);
   }
   getItems(options:FilterOptions):Promise<Array<ImageItem>> {
     console.log(`getItems(${JSON.stringify(options)})`);
@@ -203,5 +206,57 @@ export class SQLiteDatabase extends DatabaseImpl {
     const SELECT = 'SELECT *, CASE WHEN exifTime IS NOT NULL THEN exifTime ELSE mtime END AS imageTime FROM images';
     const WHERE = ' WHERE imageId= ?';
     return this.get(`${SELECT} ${WHERE}`, [imageId]);
+  }
+  removeSystemTags(imageItem:ImageItem):Promise<void> {
+    return this
+      .findImageId(imageItem)
+      .then((imageId) => {
+      });
+  }
+  addSystemTags(imageId:number):Promise<void> {
+    console.log(`addSystemFiles`);
+    let id;
+    return this
+      .getItem(imageId)
+      .then((item) => {
+        //console.log(`imageId:${imageId}, ${new Date(item.imageTime).getFullYear()}`);
+        return this.addSystemTag(imageId, `S:${new Date(item.imageTime).getFullYear()}`);
+      })
+      .then(() => {
+        return /*this.addImageTag()*/;
+      });
+  }
+  addSystemTag(imageId:number, tag:string):Promise<number> {
+    let tagId;
+    return this
+      .get('SELECT tagId FROM tags WHERE tagName = ?', [tag])
+      .then((row) => {
+        if (row) {
+          return row.tagId;
+        } else {
+          return this
+            .run('INSERT INTO tags (tagName) VALUES ( ? )', [tag])
+            .then((obj) => {
+              return obj.lastID;
+            });
+        }
+      })
+      .then((id) => {
+        tagId = id;
+        return this.get('SELECT * FROM imageTags WHERE imageId = ? AND tagId = ?', [imageId, tagId])
+      })
+      .then((row) => {
+        if (row) {
+          //console.log(`ROW:ALREADY EXIST`);
+          return row.imageTagId;
+        } else {
+          //console.log(`imageId, tagId:${imageId}, ${tagId}`);
+          return this
+            .run('INSERT INTO imageTags (imageId, tagId) VALUES ( ? , ? )', [imageId, tagId])
+            .then((obj) => {
+              return obj.lastId;
+            });
+        }
+      });
   }
 }

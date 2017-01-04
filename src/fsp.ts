@@ -29,7 +29,7 @@ export function readdir(dir:string):Promise<Array<string>> {
 export function mkdir(path:any) {
   return new Promise((resolve, reject) => {
     fs.mkdir(path, (err) => {
-      if (err) {
+      if (err && err.code !== 'EEXIST') {
         reject(err);
         return;
       }
