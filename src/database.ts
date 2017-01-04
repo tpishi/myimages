@@ -45,145 +45,75 @@ abstract class DatabaseImpl implements Database {
       resolve({
         fullPath: info.fullPath,
         mtime: info.mtime,
-        imageTime: info.mtime,
       });
     });
   }
   insertOrUpdateItem(info:FileInfo, exifTime?:number):Promise<number> {
-    return new Promise<number>(async (resolve, reject) => {
-      const imageItem:ImageItem = await this.createItem(info);
-      this.findId(imageItem).then((id) => {
+    let imageItem:ImageItem;
+    return this
+      .createItem(info)
+      .then((item) => {
+        imageItem = item;
+        return this.findId(item);
+      })
+      .then((imageId) => {
         if (typeof exifTime !== 'undefined') {
           imageItem.exifTime = exifTime;
-          imageItem.imageTime = exifTime;
         }
-        if (id === -1) {
-          this.insertItem(imageItem).then((key) => {
-            resolve(key);
-          });
+        if (imageId === -1) {
+          return this.insertItem(imageItem);
         } else {
-          this.updateItem(imageItem).then((key) => {
-            resolve(key);
-          });
+          return this.updateItem(imageItem);
         }
       });
-    });
   }
   protected getIdFromThumbnailPath(thumbnailPath:string):number {
     const parent = parseInt(thumbnailPath.slice(0, 4), 16);
     const name = parseInt(thumbnailPath.slice(5, 9), 16);
-    const id = parent*MAX_FILES_PER_DIRECTORY + name;
+    const imageId = parent*MAX_FILES_PER_DIRECTORY + name;
     //console.log(`getIdFromThumbnailPath:${thumbnailPath},${id}`);
-    return id;
+    return imageId;
   }
-  getThumbnailPath(id:number):string {
-    const parent = ('0000' + Math.floor(id / MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
-    const name = ('0000' + (id % MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
+  getThumbnailPath(imageId:number):string {
+    const parent = ('0000' + Math.floor(imageId / MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
+    const name = ('0000' + (imageId % MAX_FILES_PER_DIRECTORY).toString(16)).slice(-4);
     return parent + path.sep + name + '.webp';
   }
 }
 
 export class SQLiteDatabase extends DatabaseImpl {
   private _db;
-  open(dbpath:string):Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      this._db = new sqlite3.Database(dbpath);
-      const SQL_INFO = 'CREATE TABLE IF NOT EXISTS info (id INTEGER PRIMARY KEY, fullPath TEXT UNIQUE, imageTime INGETER, mtime INTEGER, exifTime INTEGER NULL, hash TEXT NULL)';
-      this._db.run(SQL_INFO, (err) => {
+
+  private run(sql:string, args?:any):Promise<any> {
+    return new Promise<any>((resolve, reject) => {
+      this._db.run(sql, args, function (err) {
         if (err) {
+          console.log(`run:${err}`);
           reject(err);
           return;
         }
-        resolve();
+        const obj = this;
+        resolve(obj);
       });
     });
   }
-  findId(item:ImageItem):Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      const SQL = 'SELECT id FROM info WHERE fullPath = ?';
-      this._db.get(SQL, [item.fullPath], (err, res) => {
+  private get(sql:string, args?:any):Promise<any> {
+    return new Promise<any>((resolve, reject) => {
+      this._db.get(sql, args, (err, row) => {
         if (err) {
-          console.log(`findId:${err}`);
+          console.log(`get:${err}`);
           reject(err);
           return;
         }
-        if (res) {
-          //console.log(`findId:${JSON.stringify(res)}`);
-          resolve(res['id']);
-        } else {
-          resolve(-1);
-        }
+        resolve(row);
       });
-    });
+    })
   }
-  updateItem(item:ImageItem):Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      let sql = 'UPDATE info SET mtime = $mtime, imageTime = $imageTime';
-      const args:any = {
-        $mtime: item.mtime,
-        $imageTime: item.imageTime
-      };
-      if (Number.isInteger(item.exifTime)) {
-        sql += ', exifTime = $exifTime';
-        args.$exifTime = item.exifTime;
-        args.$imageTime = item.exifTime;
-      }
-      if (item.hash) {
-        sql += ' , hash = $hash';
-        args.$hash = item.hash;
-      }
-      sql += ' WHERE fullPath = $fullPath';
-      args.$fullPath = item.fullPath;
-      //console.log('SQL:' + sql);
-      //console.log('args:' + JSON.stringify(args));
-      this._db.run(sql, args, (err) => {
+  private all(sql:string, args?:any):Promise<Array<any>> {
+    return new Promise<Array<any>>((resolve, reject) => {
+      this._db.all(sql, args, (err,rows) => {
         if (err) {
-          console.log('run:err:' + err);
-          reject(err);
-          return;
-        }
-        this.findId(item).then(id => resolve(id));
-      });
-    });
-  }
-  insertItem(item:ImageItem):Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      let sql, args;
-      if (typeof item.exifTime !== 'undefined') {
-        sql = 'INSERT INTO info (fullPath, imageTime, mtime, exifTime) values ( $fullPath, $imageTime, $mtime, $exifTime )';
-        args = {
-          $fullPath: item.fullPath,
-          $imageTime: item.imageTime,
-          $mtime: item.mtime,
-          $exifTime: item.exifTime
-        };
-      } else {
-        sql = 'INSERT INTO info (fullPath, imageTime, mtime) values ( $fullPath, $imageTime, $mtime )';
-        args = {
-          $fullPath: item.fullPath,
-          $imageTime: item.imageTime,
-          $mtime: item.mtime
-        };
-      }
-      this._db.run(sql, args, (err) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        this.findId(item).then(id => resolve(id));
-      });
-    });
-  }
-  getItems(options:FilterOptions):Promise<Array<ImageItem>> {
-    return new Promise<Array<ImageItem>>((resolve, reject) => {
-      console.log(`getItems(${JSON.stringify(options)})`);
-      const SELECT = 'SELECT * FROM info';
-      const ORDERBY = 'ORDER BY imageTime ' + ((options.descend) ? 'DESC': 'ASC');
-      const LIMITOFFSET = 'LIMIT ? OFFSET ?';
-      const SQL = `${SELECT} ${ORDERBY} ${LIMITOFFSET}`;
-      this._db.all(SQL, [options.limit, options.offset], (err,rows) => {
-        if (err) {
-          console.log('reject:' + err);
+          console.log(`all:${err}`);
           reject(err);
           return;
         }
@@ -191,16 +121,87 @@ export class SQLiteDatabase extends DatabaseImpl {
       });
     });
   }
-  getItem(id:number):Promise<ImageItem> {
-    return new Promise<ImageItem>((resolve, reject) => {
-      const SQL = 'SELECT * FROM info WHERE id = ?';
-      this._db.get(SQL, [id], (err,row) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(row);
+
+  open(dbpath:string):Promise<void> {
+    this._db = new sqlite3.Database(dbpath);
+    return this
+      .run('PRAGMA foreign_keys=1')
+      .then(() => {
+        const array:Array<Promise<any>> = [
+          this.run('CREATE TABLE IF NOT EXISTS images (imageId INTEGER PRIMARY KEY, fullPath TEXT UNIQUE, mtime INTEGER, exifTime INTEGER NULL, hash TEXT NULL)'),
+          this.run('CREATE TABLE IF NOT EXISTS tags (tagId INTEGER PRIMARY KEY, tagName TEXT UNIQUE)'),
+          this.run('CREATE TABLE IF NOT EXISTS imageTags (imageTagId INTEGER PRIMARY KEY, imageId INTEGER, tagId INTEGER)'),
+        ];
+        return Promise.all(array);
       });
+  }
+  findId(item:ImageItem):Promise<number> {
+    const SQL = 'SELECT imageId FROM images WHERE fullPath = ?';
+    return this.get(SQL, [item.fullPath]).then((row) => {
+      return (row) ? row['imageId']: -1;
     });
+  }
+
+  updateItem(item:ImageItem):Promise<number> {
+    let sql:string = 'UPDATE images SET mtime = $mtime';
+    const args:any = {
+      $mtime: item.mtime,
+    };
+    if (Number.isInteger(item.exifTime)) {
+      sql += ', exifTime = $exifTime';
+      args.$exifTime = item.exifTime;
+    } else {
+      sql += ', exifTime = NULL';
+    }
+    if (item.hash) {
+      sql += ' , hash = $hash';
+      args.$hash = item.hash;
+    } else {
+      sql += ' , hash = NULL';
+    }
+    sql += ' WHERE fullPath = $fullPath';
+    args.$fullPath = item.fullPath;
+    //console.log('SQL:' + sql);
+    //console.log('args:' + JSON.stringify(args));
+    return this
+      .run(sql, args)
+      .then(() => {
+        return this.findId(item);
+      });
+  }
+  insertItem(item:ImageItem):Promise<number> {
+    let sql, args;
+    if (typeof item.exifTime !== 'undefined') {
+      sql = 'INSERT INTO images (fullPath, mtime, exifTime) values ( $fullPath, $mtime, $exifTime )';
+      args = {
+        $fullPath: item.fullPath,
+        $mtime: item.mtime,
+        $exifTime: item.exifTime
+      };
+    } else {
+      sql = 'INSERT INTO images (fullPath, mtime) values ( $fullPath, $mtime )';
+      args = {
+        $fullPath: item.fullPath,
+        $mtime: item.mtime
+      };
+    }
+    return this
+      .run(sql, args)
+      .then(() => {
+        return this.findId(item);
+      });
+  }
+  getItems(options:FilterOptions):Promise<Array<ImageItem>> {
+    console.log(`getItems(${JSON.stringify(options)})`);
+    const SELECT = 'SELECT *, CASE WHEN exifTime IS NOT NULL THEN exifTime ELSE mtime END AS imageTime FROM images';
+    const ORDERBY = 'ORDER BY imageTime ' + ((options.descend) ? 'DESC': 'ASC');
+    const LIMITOFFSET = 'LIMIT ? OFFSET ?';
+    const SQL = `${SELECT} ${ORDERBY} ${LIMITOFFSET}`;
+    return this.all(SQL, [options.limit, options.offset]);
+  }
+  getItem(imageId:number):Promise<ImageItem> {
+    const SELECT = 'SELECT *, CASE WHEN exifTime IS NOT NULL THEN exifTime ELSE mtime END AS imageTime FROM images';
+    const WHERE = ' WHERE imageId= ?';
+    return this.get(`${SELECT} ${WHERE}`, [imageId]);
   }
 }

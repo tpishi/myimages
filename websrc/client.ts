@@ -83,8 +83,8 @@
           $('#images').append(`<div class="row" id="date_${dd}_${row}"></div>`);
         }
         $(`#date_${dd}_${row}`).append(`<div class="col-sm-6 col-md-3" id="id_${i}"></div>`);
-        $.get(`/cache/check/${p.id}`, () => {
-          $(`#id_${i}`).html(createTag(p.id, p));
+        $.get(`/cache/check/${p.imageId}`, () => {
+          $(`#id_${i}`).html(createTag(p.imageId, p));
         }).fail(() => {
           $(`#id_${i}`).html(`<div>cannot get ${p.fullPath}</div>`)
         });
