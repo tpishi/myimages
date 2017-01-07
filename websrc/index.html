@@ -7,6 +7,15 @@
   <body>
     <div class="container-fluid">
       <input id="order" type="checkbox" autocomplete="off">Old -> New
+      <div class="btn-group">
+        <button type="button"
+                class="btn btn-default dropdown-toggle"
+                data-toggle="dropdown"
+                aria-haspopup="true"
+                aria-expanded="false"> Tags <span class="caret"></span></button>
+        <ul class="dropdown-menu" id="tags">
+        </ul>
+      </div>
       <button id="previous" type="button" class="btn btn-primary btn-block btn-lg">Previous</button>
     </div>
     <div id="images" class="container-fluid"></div>

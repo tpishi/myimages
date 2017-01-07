@@ -17,6 +17,11 @@ export interface ImageItem extends FileInfo {
   exifTime?:number;
 }
 
+export interface TagInfo {
+  tagName:string;
+  numberOfImages:number;
+}
+
 export interface FilterOptions {
   descend:boolean;
   offset:number;
@@ -30,6 +35,7 @@ export interface Database {
   getItem(id:number):Promise<ImageItem>;
   updateItem(item:ImageItem):Promise<void>;
   getThumbnailPath(id:number):string;
+  getTags():Promise<Array<TagInfo>>;
 }
 
 abstract class DatabaseImpl implements Database {
@@ -38,6 +44,7 @@ abstract class DatabaseImpl implements Database {
   abstract getItems(options:FilterOptions):Promise<Array<ImageItem>>;
   abstract getItem(id:number):Promise<ImageItem>;
   abstract updateItem(item:ImageItem):Promise<void>;
+  abstract getTags():Promise<Array<TagInfo>>;
   protected abstract insertItem(value:ImageItem):Promise<void>;
   protected abstract findImageId(item:ImageItem):Promise<number>;
   protected abstract removeSystemTags(item:ImageItem):Promise<void>;
@@ -214,7 +221,7 @@ export class SQLiteDatabase extends DatabaseImpl {
       });
   }
   addSystemTags(imageId:number):Promise<void> {
-    console.log(`addSystemFiles`);
+    //console.log(`addSystemFiles`);
     let id;
     return this
       .getItem(imageId)
@@ -258,5 +265,9 @@ export class SQLiteDatabase extends DatabaseImpl {
             });
         }
       });
+  }
+  getTags():Promise<Array<TagInfo>> {
+    const SQL = 'SELECT tags.tagName AS tagName, COUNT(*) AS numberOfImages FROM imageTags JOIN tags ON imageTags.tagId=tags.tagId GROUP BY imageTags.tagId';
+    return this.all(SQL);
   }
 }

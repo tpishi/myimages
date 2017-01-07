@@ -274,9 +274,12 @@ function main(myImagesRoot:string, name:string) {
     }));
     app.use(bodyParser.json());
     app.get('/cache/summary', (request, response) => {
-      response.json({
-        preparedImages: scanner.prepared,
-        totalImages: scanner.total,
+      scanner.database.getTags().then((tagInfos) => {
+        response.json({
+          preparedImages: scanner.prepared,
+          totalImages: scanner.total,
+          tags: tagInfos,
+        });
       });
     });
     app.post('/cache/images', (request, response) => {

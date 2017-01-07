@@ -5,7 +5,7 @@
   const NUMBER_OF_IMAGES_PER_PAGE = 20;
   $(() => {
     param.order = -1;
-    parseParams();
+    param.currentPage = 0;
     getSummary();
   });
   $('#order').change(() => {
@@ -38,15 +38,6 @@
     modal.find('.modal-title').text(recipient);
     modal.find('.modal-body').html(`<img class="img-responsive" src="/raw/${button.data('src')}.JPG">`);
   });
-  function parseParams() {
-    const search = $(location).attr('search');
-    const p:Array<string> = search.split('=');
-    if (p.length === 2) {
-      param.currentPage = parseInt(p[1]);
-    } else {
-      param.currentPage = 0;
-    }
-  }
   function createTag(src, info) {
     const d = new Date(info.imageTime);
     const img = `<img data-toggle="modal" data-target="#myModal" data-whatever="${info.fullPath}" data-src="${src}" src="/cache/${src}">`;
@@ -97,6 +88,12 @@
       if (data.totalImages !== 0) {
         if (totalImages === -1) {
           totalImages = data.totalImages;
+        }
+        if (data.tags.length !== 0) {
+          let i;
+          for (i = 0; i < data.tags.length; i++) {
+            $('#tags').append(`<li><a href="#">${data.tags[i].tagName} <span class="badge">${data.tags[i].numberOfImages}</span></a></li>`);
+          }
         }
         getImage(param.currentPage);
       } else {
