@@ -4,6 +4,7 @@
   const param:any = {};
   const NUMBER_OF_IMAGES_PER_PAGE = 20;
   $(() => {
+    param.tags = [];
     param.order = -1;
     param.currentPage = 0;
     getSummary();
@@ -38,6 +39,15 @@
     modal.find('.modal-title').text(recipient);
     modal.find('.modal-body').html(`<img class="img-responsive" src="/raw/${button.data('src')}.JPG">`);
   });
+  $('#tags').on('click', 'a', function() { // do not use arrow function
+    if (this.id === '(all)') {
+      param.tags = [];
+    } else {
+      param.tags = [this.id];
+    }
+    param.currentPage = 0;
+    getImage(param.currentPage);
+  });
   function createTag(src, info) {
     const d = new Date(info.imageTime);
     const img = `<img data-toggle="modal" data-target="#myModal" data-whatever="${info.fullPath}" data-src="${src}" src="/cache/${src}">`;
@@ -51,7 +61,8 @@
     $.post('/cache/images', {
       order: param.order,
       from: from,
-      maxImages: NUMBER_OF_IMAGES_PER_PAGE
+      maxImages: NUMBER_OF_IMAGES_PER_PAGE,
+      tags: param.tags,
     }, (data) => {
       const to = data.length;
       console.log('data.length:' + data.length);
@@ -92,7 +103,7 @@
         if (data.tags.length !== 0) {
           let i;
           for (i = 0; i < data.tags.length; i++) {
-            $('#tags').append(`<li><a href="#">${data.tags[i].tagName} <span class="badge">${data.tags[i].numberOfImages}</span></a></li>`);
+            $('#tags').append(`<li><a href="#" id="${data.tags[i].tagName}">${data.tags[i].tagName} <span class="badge">${data.tags[i].numberOfImages}</span></a></li>`);
           }
         }
         getImage(param.currentPage);

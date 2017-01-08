@@ -288,6 +288,7 @@ function main(myImagesRoot:string, name:string) {
         descend: (request.body.order === '-1'),
         offset: request.body.from,
         limit: request.body.maxImages,
+        tags: request.body.tags
       };
       scanner.database.getItems(filterOptions).then((array) => {
         console.log(`getItems():${JSON.stringify(array)}`);

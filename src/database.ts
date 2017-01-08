@@ -26,6 +26,7 @@ export interface FilterOptions {
   descend:boolean;
   offset:number;
   limit:number;
+  tags:Array<string>;
 }
 
 export interface Database {
@@ -203,10 +204,22 @@ export class SQLiteDatabase extends DatabaseImpl {
   }
   getItems(options:FilterOptions):Promise<Array<ImageItem>> {
     console.log(`getItems(${JSON.stringify(options)})`);
-    const SELECT = 'SELECT *, CASE WHEN exifTime IS NOT NULL THEN exifTime ELSE mtime END AS imageTime FROM images';
+    const SELECT = 'SELECT *, CASE WHEN exifTime IS NOT NULL THEN exifTime ELSE mtime END AS imageTime'
+      + ' FROM imageTags'
+      + ' JOIN images ON imageTags.imageId=images.imageId'
+      + ' JOIN tags ON imageTags.tagId=tags.tagId';
+    const WHERE =  ' WHERE tagName=?'
+    const GROUPBY = ' GROUP BY imageTags.imageId';
     const ORDERBY = 'ORDER BY imageTime ' + ((options.descend) ? 'DESC': 'ASC');
     const LIMITOFFSET = 'LIMIT ? OFFSET ?';
-    const SQL = `${SELECT} ${ORDERBY} ${LIMITOFFSET}`;
+    if (typeof options.tags !== 'undefined') {
+      if (options.tags.length > 0) {
+        const SQL = `${SELECT} ${WHERE} ${GROUPBY} ${ORDERBY} ${LIMITOFFSET}`;
+        console.log(`${SQL}, ${options.tags[0]}`);
+        return this.all(SQL, [options.tags[0], options.limit, options.offset]);
+      }
+    }
+    const SQL = `${SELECT} ${GROUPBY} ${ORDERBY} ${LIMITOFFSET}`;
     return this.all(SQL, [options.limit, options.offset]);
   }
   getItem(imageId:number):Promise<ImageItem> {
