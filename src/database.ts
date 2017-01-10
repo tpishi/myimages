@@ -235,12 +235,20 @@ export class SQLiteDatabase extends DatabaseImpl {
   }
   addSystemTags(imageId:number):Promise<void> {
     //console.log(`addSystemFiles`);
+    let imageItem:ImageItem;
     let id;
     return this
       .getItem(imageId)
       .then((item) => {
+        imageItem = item;
         //console.log(`imageId:${imageId}, ${new Date(item.imageTime).getFullYear()}`);
         return this.addSystemTag(imageId, `S:${new Date(item.imageTime).getFullYear()}`);
+      })
+      .then(() => {
+        const month = ['January', 'February', 'March', 'April',
+                       'May', 'June', 'July', 'August',
+                       'September', 'October', 'November', 'December'];
+        return this.addSystemTag(imageId, `S:${month[new Date(imageItem.imageTime).getMonth()]}`);
       })
       .then(() => {
         return /*this.addImageTag()*/;
@@ -279,8 +287,67 @@ export class SQLiteDatabase extends DatabaseImpl {
         }
       });
   }
+  getMonthInt(month:string) {
+    switch(month) {
+    case 'January':
+      return 0;
+    case 'February':
+      return 1;
+    case 'March':
+      return 2;
+    case 'April':
+      return 3;
+    case 'May':
+      return 4;
+    case 'June':
+      return 5;
+    case 'July':
+      return 6;
+    case 'August':
+      return 7;
+    case 'September':
+      return 8;
+    case 'October':
+      return 9;
+    case 'November':
+      return 10;
+    case 'December':
+      return 11;
+    }
+    console.log(`getMonthInt(${month})`);
+    return -1;
+  }
   getTags():Promise<Array<TagInfo>> {
     const SQL = 'SELECT tags.tagName AS tagName, COUNT(*) AS numberOfImages FROM imageTags JOIN tags ON imageTags.tagId=tags.tagId GROUP BY imageTags.tagId';
-    return this.all(SQL);
+    return this.all(SQL)
+      .then((array) => {
+        array.sort((tagInfoa, tagInfob) => {
+          const a = tagInfoa.tagName;
+          const b = tagInfob.tagName;
+          if (a.startsWith('S:') && b.startsWith('U:')) {
+            return -1;
+          } else if (a.startsWith('U:') && b.startsWith('S:')) {
+            return 1;
+          }
+          if (a.startsWith('U:')) {
+            return a.localeCompare(b);
+          }
+          const aa = a.substr(2);
+          const bb = b.substr(2);
+          const yeara = parseInt(aa);
+          const yearb = parseInt(bb);
+          if (Number.isInteger(yeara) && !Number.isInteger(yearb)) {
+            return -1;
+          }
+          if (!Number.isInteger(yeara) && Number.isInteger(yearb)) {
+            return 1;
+          }
+          if (Number.isInteger(yeara) && Number.isInteger(yearb)) {
+            return yeara - yearb;
+          }
+          return this.getMonthInt(aa) - this.getMonthInt(bb);
+        });
+        return array;
+      });
   }
 }
